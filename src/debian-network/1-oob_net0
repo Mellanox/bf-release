@@ -1,0 +1,2 @@
+auto oob_net0
+iface oob_net0 inet dhcp

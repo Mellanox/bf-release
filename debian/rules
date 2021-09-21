@@ -1,0 +1,101 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+#
+#  # Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+pname := bf-release
+DIST_NAME := $(shell lsb_release -si)
+DIST_NAME_L := $(shell lsb_release -si | tr A-Z a-z)
+DIST_VERSION := $(shell lsb_release -sr)
+OFED_VERSION := $(shell ofed_info -n)
+BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules | grep -o [0-9].*bluefield | head -1)
+BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
+
+BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
+ARCH := aarch64
+
+%:
+	dh $@
+
+override_dh_auto_install:
+
+	dh_installdirs -p$(pname)  etc
+	echo $(BFB_VERSION) > debian/$(pname)/etc/mlnx-release
+
+	# Tools
+	dh_installdirs -p$(pname)  opt/mellanox/hlk
+	dh_installdirs -p$(pname)  sbin
+
+	install -m 0755	src/mlnx-pre-hlk     debian/$(pname)/opt/mellanox/hlk/mlnx-pre-hlk
+	install -m 0755	src/mlnx-post-hlk    debian/$(pname)/opt/mellanox/hlk/mlnx-post-hlk
+	install -m 0755	src/kexec_reboot     debian/$(pname)/sbin/kexec_reboot
+
+	# Sysctl
+	dh_installdirs -p$(pname)  usr/lib/sysctl.d/
+	install -m 0644	src/90-bluefield.conf	debian/$(pname)/usr/lib/sysctl.d/
+
+	# DOCA repo
+	dh_installdirs -p$(pname)  etc/apt/sources.list.d
+	echo "#" > debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# Nvidia DOCA public repository configuration file." >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# For more information, refer to http://linux.mellanox.com" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+
+	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
+
+	# UDEV rules
+	dh_installdirs -p$(pname)  etc/udev/rules.d
+	install -m 0644 src/91-tmfifo_net.rules		debian/$(pname)/etc/udev/rules.d
+	install -m 0644 src/92-oob_net.rules		debian/$(pname)/etc/udev/rules.d
+
+	# System services
+	dh_installdirs -p$(pname)  etc/systemd/system/NetworkManager-wait-online.service.d
+	dh_installdirs -p$(pname)  etc/systemd/system/systemd-networkd-wait-online.service.d
+	dh_installdirs -p$(pname)  etc/systemd/system/networking.service.d
+
+	install -m 0644	src/override-NetworkManager-wait-online debian/$(pname)/etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
+	install -m 0644	src/override-networkd-wait-online       debian/$(pname)/etc/systemd/system/systemd-networkd-wait-online.service.d/override.conf
+	install -m 0644	src/override-networking                 debian/$(pname)/etc/systemd/system/networking.service.d/override.conf
+
+	# Network configuration
+ifeq ($(DIST_NAME_L), debian)
+	dh_installdirs -p$(pname)  etc/network/interfaces.d
+	install -m 0644 src/debian-network/*	debian/$(pname)/etc/network/interfaces.d
+endif
+	dh_installdirs -p$(pname)  etc/NetworkManager/conf.d
+	install -m 0644 src/40-mlnx.conf		debian/$(pname)/etc/NetworkManager/conf.d/
+	install -m 0644 src/45-mlnx-dns.conf	debian/$(pname)/etc/NetworkManager/conf.d/
+
+	dh_installdirs -p$(pname)  etc/mellanox
+	install -m 0644 src/mlnx-bf.conf	debian/$(pname)/etc/mellanox
+	install -m 0644 src/mlnx-ovs.conf	debian/$(pname)/etc/mellanox
+
+	# Cloud-init
+	dh_installdirs -p$(pname)  var/lib/cloud
+	cp -a src/cloud/* debian/$(pname)/var/lib/cloud
+
+	# mlnx-snap
+	dh_installdirs -p$(pname)  opt/mellanox/mlnx_snap/exec_files
+	install -m 0755	src/network_admin.py debian/$(pname)/opt/mellanox/mlnx_snap/exec_files/network_admin.py
+	install -m 0755	src/bfb_admin.py     debian/$(pname)/opt/mellanox/mlnx_snap/exec_files/bfb_admin.py
+	install -m 0755	src/bfb_tool.py      debian/$(pname)/opt/mellanox/mlnx_snap/exec_files/bfb_tool.py
+
+	# K8s
+	dh_installdirs -p$(pname)  etc/systemd/system/kubelet.service.d
+	dh_installdirs -p$(pname)  etc/cni/net.d
+	dh_installdirs -p$(pname)  var/lib/kubelet
+	dh_installdirs -p$(pname)  usr/bin
+
+ifeq ($(DIST_NAME_L), ubuntu)
+		dh_installdirs -p$(pname)  etc/containerd
+		install -m 0644	src/config.toml      debian/$(pname)/etc/containerd/config.toml
+endif
+	install -m 0644	src/10-bf.conf       debian/$(pname)/etc/systemd/system/kubelet.service.d/10-bf.conf
+	install -m 0644	src/99-loopback.conf debian/$(pname)/etc/cni/net.d/99-loopback.conf
+	install -m 0755	src/crictl           debian/$(pname)/usr/bin/crictl
+	install -m 0644	src/crictl.yaml      debian/$(pname)/etc/crictl.yaml
+	install -m 0644	src/config.yaml      debian/$(pname)/var/lib/kubelet/config.yaml

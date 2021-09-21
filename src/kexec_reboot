@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ -f /etc/debian_version ]; then
+	/usr/sbin/kexec --append="$(</proc/cmdline)" -l /boot/vmlinuz --ramdisk /boot/initrd.img
+else
+	/usr/sbin/kexec --append="$(</proc/cmdline)" -l /boot/vmlinuz-`uname -r` --ramdisk /boot/initramfs-`uname -r`.img
+fi
+/usr/sbin/kexec -e

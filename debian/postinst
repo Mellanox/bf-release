@@ -1,0 +1,91 @@
+#!/bin/bash
+
+if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
+    ofed_version=`ofed_info -n`
+    sed -i -r -e "s/^(OFED)(.*)(-[0-9]*.*-[0-9]*.*):/MLNX_OFED_LINUX-${ofed_version} (\1\3):\n/" /usr/bin/ofed_info
+    sed -i -r -e "s/(.*then echo) (.*):(.*)/\1 MLNX_OFED_LINUX-${ofed_version}: \3/" /usr/bin/ofed_info
+    sed -i -r -e "s/(.*X-n\" ]; then echo) (.*)(; exit.*)/\1 ${ofed_version} \3/" /usr/bin/ofed_info
+    sed -i -e "s/OFED-internal/MLNX_OFED_LINUX/g" /usr/bin/ofed_info
+fi
+
+# Use mlxconfig instead of mstconfig to support BF2
+if [ -x /usr/bin/mlxconfig ]; then
+    sed -i -e "s/mstconfig/mlxconfig/g" /sbin/mlnx_bf_configure /sbin/mlnx-sf
+fi
+
+# Show grub menu and set a timeout
+sed -i 's/.*GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=countdown/' /etc/default/grub
+if ! (grep -q GRUB_TIMEOUT_STYLE /etc/default/grub); then
+	echo "GRUB_TIMEOUT_STYLE=countdown" >> /etc/default/grub
+fi
+perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
+sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
+sed -i 's/^LOOP_PERIOD=.*/LOOP_PERIOD=60/' /etc/ipmi/progconf
+
+# Use console
+sed -i 's/^#GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
+
+# Linux: use console and set a sensible date on boot (the later is important
+# when resizing the partitions on first boot).
+sed -i \
+    -e 's/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="console=hvc0 console=ttyAMA0 earlycon=pl011,0x01000000 fixrtc quiet"/' \
+    -e 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/' \
+    /etc/default/grub
+
+if [ -d /etc/default/grub.d ]; then
+    echo "GRUB_DISABLE_OS_PROBER=true" > /etc/default/grub.d/10-disableos-prober.cfg
+fi
+
+if [ -e /etc/default/networking ]; then
+    sed -i -r -e "s/.*WAIT_ONLINE_TIMEOUT.*/WAIT_ONLINE_TIMEOUT=5/" /etc/default/networking
+fi
+
+mkdir -p /etc/kubelet.d
+
+enable_service()
+{
+    service_name=$1
+
+    systemctl unmask $service_name || true
+    systemctl enable $service_name || true
+}
+
+disable_service()
+{
+    service_name=$1
+
+    systemctl disable $service_name || true
+}
+
+enable_service mlx-regex.service
+enable_service NetworkManager.service
+enable_service NetworkManager-wait-online.service
+enable_service acpid.service
+enable_service openibd
+enable_service networking
+enable_service mlnx_snap
+# Enable ipmi services
+enable_service mlx-openipmi.service
+enable_service mlx_ipmid.service
+enable_service set_emu_param.service
+
+disable_service srp_daemon.service
+disable_service "srp_daemon_port@mlx5_0:1.service"
+disable_service "srp_daemon_port@mlx5_1:1.service"
+disable_service ibacm.service
+disable_service opensmd.service
+disable_service unattended-upgrades.service
+disable_service apt-daily-upgrade.timer
+disable_service kubelet.service
+disable_service containerd.service
+
+# NVSM
+/bin/rm -f /etc/nvsm/nvsm-ca.crt /etc/nvsm/nvsm-ca.key /etc/nvsm/nvsm-ca.srl /etc/nvsm/nvsm-server.crt /etc/nvsm/nvsm-server.csr /etc/nvsm/nvsm-server.key
+disable_service nvsm-api-gateway.service
+disable_service nvsm-core.service
+disable_service nvsm-mqtt.service
+disable_service nvsm-notifier.service
+disable_service nvsm.service
+
+#DEBHELPER#

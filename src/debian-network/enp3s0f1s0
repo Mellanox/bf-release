@@ -1,0 +1,2 @@
+auto enp3s0f1s0
+iface enp3s0f1s0 inet dhcp

@@ -1,0 +1,6 @@
+auto tmfifo_net0
+iface tmfifo_net0 inet static
+	address 192.168.100.2/30
+	gateway 192.168.100.1
+	dns-nameservers 192.168.100.1
+	metric 1025

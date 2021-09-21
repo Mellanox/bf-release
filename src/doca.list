@@ -1,0 +1,7 @@
+#
+# Nvidia DOCA public repository configuration file.
+# For more information, refer to http://linux.mellanox.com
+#
+# To add public key:
+# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/ubuntu20.04/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -
+deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/ubuntu20.04/$(ARCH) ./

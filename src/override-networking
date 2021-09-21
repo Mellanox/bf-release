@@ -1,0 +1,4 @@
+[Service]
+TimeoutStartSec=5
+ExecStop=
+ExecStop=/sbin/ifdown -a --read-environment --exclude=lo --force --ignore-errors
