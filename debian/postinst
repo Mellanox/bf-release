@@ -19,7 +19,7 @@ if ! (grep -q GRUB_TIMEOUT_STYLE /etc/default/grub); then
 	echo "GRUB_TIMEOUT_STYLE=countdown" >> /etc/default/grub
 fi
 perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
-sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
+sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
 sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
 sed -i 's/^LOOP_PERIOD=.*/LOOP_PERIOD=60/' /etc/ipmi/progconf
 
