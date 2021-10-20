@@ -18,12 +18,6 @@ BlueField release files and post-installation configuration
 
 %{!?NETWORKING_TIMEOUT: %global NETWORKING_TIMEOUT 5}
 
-%if 0%{?rhel} == 7
-%global	NETMASK0 255.255.255.255
-%else
-%global NETMASK0 0.0.0.0
-%endif
-
 %define __python %{__python3}
 
 %prep
@@ -79,13 +73,8 @@ DNS1=192.168.100.1
 NAME=tmfifo_net0
 DEVICE=tmfifo_net0
 ONBOOT=yes
-EOF
-
-cat > %{buildroot}/etc/sysconfig/network-scripts/route-tmfifo_net0 << EOF
-ADDRESS0=0.0.0.0
-NETMASK0=%{NETMASK0}
-GATEWAY0=192.168.100.1
-METRIC0=1025
+GATEWAY=192.168.100.1
+IPV4_ROUTE_METRIC=1025
 EOF
 
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-enp3s0f0s0 << EOF
