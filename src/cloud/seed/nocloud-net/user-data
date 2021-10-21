@@ -13,7 +13,6 @@ chpasswd:
     ubuntu:ubuntu
   expire: True
 runcmd:
-  - [ grub-install ]
   - [ apt, --fix-broken, install ]
   - [ systemctl, enable, mlx-regex.service ]
   - [ systemctl, enable, NetworkManager.service ]
