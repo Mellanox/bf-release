@@ -65,6 +65,9 @@ override_dh_auto_install:
 ifeq ($(DIST_NAME_L), debian)
 	dh_installdirs -p$(pname)  etc/network/interfaces.d
 	install -m 0644 src/debian-network/*	debian/$(pname)/etc/network/interfaces.d
+else
+	dh_installdirs -p$(pname)  etc/netplan
+	install -m 0644 src/ubuntu-network/60-mlnx.yaml		debian/$(pname)/etc/netplan
 endif
 	dh_installdirs -p$(pname)  etc/NetworkManager/conf.d
 	install -m 0644 src/40-mlnx.conf		debian/$(pname)/etc/NetworkManager/conf.d/

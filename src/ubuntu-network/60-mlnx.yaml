@@ -1,0 +1,9 @@
+network:
+  ethernets:
+    enp3s0f0s0:
+      renderer: networkd
+      dhcp4: 'true'
+    enp3s0f1s0:
+      renderer: networkd
+      dhcp4: 'true'
+  version: 2
