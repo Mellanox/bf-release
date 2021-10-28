@@ -216,6 +216,7 @@ enable_service acpid.service
 enable_service openibd
 enable_service network
 enable_service mlnx_snap
+enable_service openvswitch.service
 # Enable ipmi services
 enable_service mlx_ipmid.service
 enable_service set_emu_param.service

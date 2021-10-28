@@ -69,6 +69,7 @@ enable_service mlnx_snap
 enable_service mlx-openipmi.service
 enable_service mlx_ipmid.service
 enable_service set_emu_param.service
+enable_service openvswitch-switch.service
 
 disable_service srp_daemon.service
 disable_service "srp_daemon_port@mlx5_0:1.service"
