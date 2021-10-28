@@ -41,6 +41,10 @@ if [ -e /etc/default/networking ]; then
     sed -i -r -e "s/.*WAIT_ONLINE_TIMEOUT.*/WAIT_ONLINE_TIMEOUT=5/" /etc/default/networking
 fi
 
+if [ -e /etc/default/watchdog ]; then
+	sed -i -r -e 's/watchdog_module=.*/watchdog_module="sbsa_gwdt"/' /etc/default/watchdog
+fi
+
 mkdir -p /etc/kubelet.d
 
 enable_service()
@@ -70,6 +74,7 @@ enable_service mlx-openipmi.service
 enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 enable_service openvswitch-switch.service
+enable_service watchdog.service
 
 disable_service srp_daemon.service
 disable_service "srp_daemon_port@mlx5_0:1.service"
