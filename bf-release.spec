@@ -10,7 +10,7 @@ Source: %{name}-%{version}.tar.gz
 BuildRequires: redhat-lsb-core
 BuildRequires: mlnx-ofa_kernel
 BuildRequires: mlxbf-bootimages	
-Requires: containerd.io
+Requires: containerd.io kexec-tools
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
 Vendor: Nvidia
 %description
