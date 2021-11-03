@@ -216,6 +216,7 @@ enable_service acpid.service
 enable_service openibd
 enable_service network
 enable_service mlnx_snap
+enable_service mst
 enable_service openvswitch.service
 enable_service watchdog.service
 # Enable ipmi services
