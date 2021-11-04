@@ -1,6 +1,24 @@
 #cloud-config
 debug:
   verbose: true
+write_files:
+  - path: /etc/iptables/rules.v4
+    permissions: '0644'
+    owner: 'root:root'
+    content: |
+      *filter
+      :INPUT DROP [0:0]
+      :FORWARD DROP [0:0]
+      :OUTPUT ACCEPT [0:0]
+      -A INPUT -p tcp -m tcp --dport 22 -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+      -A INPUT -p tcp -m tcp --dport 1883 -j REJECT --reject-with icmp-port-unreachable
+      -A INPUT -p tcp -m tcp --dport 111 -j REJECT --reject-with icmp-port-unreachable
+      -A INPUT -p udp -m udp --dport 111 -j REJECT --reject-with icmp-port-unreachable
+      -A INPUT -p udp -m udp --dport 500 -j REJECT --reject-with icmp-port-unreachable
+      COMMIT
+
 users:
   - name: ubuntu
     lock_passwd: False
@@ -12,5 +30,7 @@ chpasswd:
   list: |
     ubuntu:ubuntu
   expire: True
+
 runcmd:
+  - [ /usr/sbin/netfilter-persistent, start ]
   - [ /usr/bin/bfrshlog, "INFO: DPU is ready" ]
