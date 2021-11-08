@@ -77,6 +77,7 @@ enable_service set_emu_param.service
 enable_service openvswitch-switch.service
 enable_service watchdog.service
 
+disable_service openvswitch-ipsec
 disable_service srp_daemon.service
 disable_service "srp_daemon_port@mlx5_0:1.service"
 disable_service "srp_daemon_port@mlx5_1:1.service"

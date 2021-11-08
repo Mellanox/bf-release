@@ -223,6 +223,7 @@ enable_service watchdog.service
 enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 
+disable_service openvswitch-ipsec
 disable_service ibacm.service
 disable_service opensmd.service
 
