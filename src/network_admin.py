@@ -40,20 +40,16 @@ from ipaddress import ip_address, IPv4Address
 __author__ = "Vladimir Sokolovsky <vlad@nvidia.com>"
 __version__ = "1.0"
 
-prog = os.path.basename(sys.argv[0]) 
+prog = os.path.basename(sys.argv[0])
 os.environ['PATH'] = '/opt/mellanox/iproute2/sbin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 MLXREG = '/usr/bin/mlxreg'
-SUPPORTED_OPERATIONS=["ipconfig", "mtuconfig", "gwconfig", "dnsconfig", "domainconfig", "roceconfig"]
-SUPPORTED_ACTIONS=["set", "show"]
+SUPPORTED_OPERATIONS=['ipconfig', 'mtuconfig', 'gwconfig', 'dnsconfig', 'domainconfig', 'roceconfig']
+SUPPORTED_ACTIONS=['set', 'show']
 cloud_init_config = "/var/lib/cloud/seed/nocloud-net/network-config"
 netplan_config = "/etc/netplan/60-mlnx.yaml"
-use_netplan = 1
 
-if use_netplan:
-    network_config = netplan_config
-else:
-    network_config = cloud_init_config
+network_config = netplan_config
 
 network_config_orig = network_config + ".orig"
 network_config_backup = network_config + ".bak"
@@ -81,7 +77,7 @@ class BFCONFIG:
                 self.roce_devices = self.__get_roce_device__()
                 self.roce_device = self.roce_devices[0]
 
-        if self.op in ["ipconfig", "mtuconfig", "gwconfig"]:
+        if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
             try:
                 with open(network_config, 'r') as stream:
                     self.data = yaml.safe_load(stream)
@@ -123,10 +119,11 @@ class BFCONFIG:
             self.metric = args.metric
             self.mtu = args.mtu
     #        self.nmcontrolled = args.nmcontrolled
-    #        self.vlan = args.vlan
+            self.vlan = args.vlan
+            self.vlan_dev = "{}.{}".format(self.device, self.vlan)
     #        self.onboot = args.onboot
 
-        if self.op in ["dnsconfig", "domainconfig"]:
+        if self.op in ['dnsconfig', 'domainconfig']:
             self.clean_domain = False
             self.ipv4_nameservers = []
             self.ipv6_nameservers = []
@@ -173,7 +170,7 @@ class BFCONFIG:
                 bf_log ("ERR: Failed to read configuration file {}. Exception: {}".format(resolv_conf, e))
                 return None
 
-        if self.op in ["roceconfig"]:
+        if self.op in ['roceconfig']:
             self.type = args.type
             self.trust = args.trust
             self.ecn = []
@@ -291,65 +288,72 @@ class BFCONFIG:
         Show configurations
         """
         result = {}
-        result["op"] = self.op
-        result["action"] = self.action
-        result["status"] = 0
-        result["output"] = ""
+        result['op'] = self.op
+        result['action'] = self.action
+        result['status'] = 0
+        result['output'] = ""
 
-        if self.op in ["ipconfig", "mtuconfig", "gwconfig"]:
+        if self.vlan == '-1':
+            dev = self.device
+            network_type = 'ethernets'
+        else:
+            dev = self.vlan_dev
+            network_type = 'vlans'
+
+
+        if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
             data = {}
-            if use_netplan:
-                data = self.data['network']
-            else:
-                data = self.data
+            data = self.data['network']
 
         if self.op == 'ipconfig':
             ipv4_addr=""
             ipv4_prefix=""
             ipv6_addr=""
             ipv6_prefix=""
+            vlan="-1"
+            link=""
 
-            if self.device in data['ethernets']:
-                if 'addresses' in data['ethernets'][self.device]:
-                    for addr in data['ethernets'][self.device]['addresses']:
+            if dev in data[network_type]:
+                if 'addresses' in data[network_type][dev]:
+                    for addr in data[network_type][dev]['addresses']:
                         ip, prefix = addr.split('/')
                         if validIPAddress(ip) == 'IPv4':
                             ipv4_addr, ipv4_prefix = ip, prefix
                         if validIPAddress(ip) == 'IPv6':
                             ipv6_addr, ipv6_prefix = ip, prefix
-                if 'dhcp4' in data['ethernets'][self.device]:
+                if 'dhcp4' in data[network_type][dev]:
                     ipv4_addr = "dhcp4"
-                if 'dhcp6' in data['ethernets'][self.device]:
+                if 'dhcp6' in data[network_type][dev]:
                     ipv6_addr = "dhcp6"
 
-                result["output"] = "ipv4_addr={}/ipv4_prefix={}/ipv6_addr={}/ipv6_prefix={}".format(ipv4_addr, ipv4_prefix, ipv6_addr, ipv6_prefix)
+            result['output'] = "ipv4_addr={}/ipv4_prefix={}/ipv6_addr={}/ipv6_prefix={}".format(ipv4_addr, ipv4_prefix, ipv6_addr, ipv6_prefix)
 
         elif self.op == 'mtuconfig':
-            if self.device in data['ethernets']:
-                if 'mtu' in data['ethernets'][self.device]:
-                    result["output"] = "mtu={}".format(data['ethernets'][self.device]['mtu'])
+            if dev in data[network_type]:
+                if 'mtu' in data[network_type][dev]:
+                    result['output'] = "mtu={}".format(data[network_type][dev]['mtu'])
 
             if 'mtu' not in result:
-                cmd = "cat /sys/class/net/{}/mtu".format(self.device)
+                cmd = "cat /sys/class/net/{}/mtu".format(dev)
                 rc, mtu_output = get_status_output(cmd, verbose)
                 if rc:
-                    bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(self.device, rc))
-                    result["status"] = rc
-                    result["output"] = "ERR: Failed to get MTU for {} interface. RC={}".format(self.device, rc)
+                    bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
+                    result['status'] = rc
+                    result['output'] = "ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc)
                     return result
-                result["output"] = "mtu={}".format(mtu_output.strip())
+                result['output'] = "mtu={}".format(mtu_output.strip())
 
         elif self.op == 'gwconfig':
             ipv4_gateway = ""
             ipv6_gateway = ""
-            if self.device in data['ethernets']:
-                if 'routes' in data['ethernets'][self.device]:
-                    result["routes"] = data['ethernets'][self.device]['routes']
-                if 'gateway4' in data['ethernets'][self.device]:
-                    ipv4_gateway = data['ethernets'][self.device]['gateway4']
-                if 'gateway6' in data['ethernets'][self.device]:
-                    ipv6_gateway = data['ethernets'][self.device]['gateway6']
-            result["output"] = "ipv4_gateway={}/ipv6_gateway={}".format(ipv4_gateway, ipv6_gateway)
+            if dev in data[network_type]:
+                if 'routes' in data[network_type][dev]:
+                    result['routes'] = data[network_type][dev]['routes']
+                if 'gateway4' in data[network_type][dev]:
+                    ipv4_gateway = data[network_type][dev]['gateway4']
+                if 'gateway6' in data[network_type][dev]:
+                    ipv6_gateway = data[network_type][dev]['gateway6']
+            result['output'] = "ipv4_gateway={}/ipv6_gateway={}".format(ipv4_gateway, ipv6_gateway)
 
         elif self.op == 'dnsconfig':
             ipv4_nameservers = []
@@ -359,10 +363,10 @@ class BFCONFIG:
                     ipv4_nameservers.append(nameserver)
                 if validIPAddress(nameserver) == 'IPv6':
                     ipv6_nameservers.append(nameserver)
-            result["output"] = "ipv4_nameservers={}/ipv6_nameservers={}".format(','.join(ipv4_nameservers), ','.join(ipv6_nameservers))
+            result['output'] = "ipv4_nameservers={}/ipv6_nameservers={}".format(','.join(ipv4_nameservers), ','.join(ipv6_nameservers))
 
         elif self.op == 'domainconfig':
-            result["output"] = "domains={}".format(','.join(self.searchdomains))
+            result['output'] = "domains={}".format(','.join(self.searchdomains))
 
         elif self.op == 'roceconfig':
             trust = ""
@@ -380,8 +384,8 @@ class BFCONFIG:
             rc, mlnx_qos_output = get_status_output(cmd, verbose)
             if rc:
                 bf_log ("ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output))
-                result["status"] = rc
-                result["output"] = "ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output)
+                result['status'] = rc
+                result['output'] = "ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output)
                 return result
 
             in_dscp2prio = 0
@@ -432,8 +436,8 @@ class BFCONFIG:
             rc, mlxreg_output = get_status_output(cmd, verbose)
             if rc:
                 bf_log ("ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output))
-                result["status"] = rc
-                result["output"] = "ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output)
+                result['status'] = rc
+                result['output'] = "ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output)
                 return result
 
             for line in mlxreg_output.split('\n'):
@@ -446,133 +450,161 @@ class BFCONFIG:
                 cmd = 'bash -c "cat /sys/class/net/{device}/ecn/roce_np/enable/{prio} 2> /dev/null"'.format(ecn=ecn, device=self.roce_device, prio=i)
                 rc, ecn_output = get_status_output(cmd, verbose)
                 if rc:
-                    result["status"] = rc
-                    result["output"] = "ERR: Failed to read ECN. RC={}\nOutput:\n{}".format(rc, ecn_output)
+                    result['status'] = rc
+                    result['output'] = "ERR: Failed to read ECN. RC={}\nOutput:\n{}".format(rc, ecn_output)
                     bf_log ("ERR: Failed to get ECN. RC={}\nOutput:\n{}".format(rc, ecn_output))
                     return result
 
                 ecn.append(ecn_output.strip())
 
-            result["output"] = "trust={trust}/prio_tc={prio_tc}/ecn={ecn}/pfc={pfc}/cable_len={cable_len}/prio2buffer={prio2buffer}/buffer_size={buffer_size}/dscp2prio={dscp2prio}/ratelimit={ratelimit}/roce_accl={roce_accl}".format(trust=trust,prio_tc=prio_tc,ecn=','.join(ecn),pfc=pfc,cable_len=cable_len,prio2buffer=prio2buffer,buffer_size=buffer_size,dscp2prio=dscp2prio,ratelimit=ratelimit,roce_accl=','.join(roce_accl))
+            result['output'] = "trust={trust}/prio_tc={prio_tc}/ecn={ecn}/pfc={pfc}/cable_len={cable_len}/prio2buffer={prio2buffer}/buffer_size={buffer_size}/dscp2prio={dscp2prio}/ratelimit={ratelimit}/roce_accl={roce_accl}".format(trust=trust,prio_tc=prio_tc,ecn=','.join(ecn),pfc=pfc,cable_len=cable_len,prio2buffer=prio2buffer,buffer_size=buffer_size,dscp2prio=dscp2prio,ratelimit=ratelimit,roce_accl=','.join(roce_accl))
 
         return result
 
+    def set_netplan_dev_data(self):
+        """
+        Set device configuration to be used by netplan
+        """
+
+        cmd = None
+        addr = None
+        prefix = None
+        dev = self.device
+        dev_info = {}
+        data = self.data['network']
+
+        network_type = ""
+
+        if self.vlan == '-1':
+            network_type = "ethernets"
+        else:
+            data['vlans'] = {}
+            dev = self.vlan_dev
+            network_type = "vlans"
+            dev_info['id'] = self.vlan
+            dev_info['link'] = self.device
+
+        if self.op == "ipconfig":
+            dev_info['addresses'] = []
+            dev_info['dhcp4'] = None
+            dev_info['dhcp6'] = None
+        elif self.op == "gwconfig":
+            dev_info['routes'] = []
+            dev_info['gateway4'] = None
+            dev_info['gateway6'] = None
+        elif self.op == "mtuconfig":
+            dev_info['mtu'] = None
+
+        if dev in data[network_type]:
+#        if data[network_type][dev]:
+            if self.op in ['ipconfig', 'gwconfig']:
+                if 'mtu' in data[network_type][dev]:
+                    dev_info['mtu'] = data[network_type][dev]['mtu']
+            if self.op in ['ipconfig', 'mtuconfig']:
+                if 'routes' in data[network_type][dev]:
+                    dev_info['routes'] = data[network_type][dev]['routes']
+                if 'gateway4' in data[network_type][dev]:
+                    dev_info['gateway4'] = data[network_type][dev]['gateway4']
+                if 'gateway6' in data[network_type][dev]:
+                    dev_info['gateway6'] = data[network_type][dev]['gateway6']
+            if self.op in ['mtuconfig', 'gwconfig']:
+                if 'addresses' in data[network_type][dev]:
+                    dev_info['addresses'] = data[network_type][dev]['addresses']
+                if 'dhcp4' in data[network_type][dev]:
+                    dev_info['dhcp4'] = data[network_type][dev]['dhcp4']
+                if 'dhcp6' in data[network_type][dev]:
+                    dev_info['dhcp6'] = data[network_type][dev]['dhcp6']
+
+        # Set configuration parameters
+        if self.op == "ipconfig":
+            if self.dhcp4:
+                dev_info['dhcp4'] = "true"
+            elif self.ipv4_addr:
+                dev_info['addresses'].append("{}/{}".format(self.ipv4_addr, self.ipv4_prefix))
+
+            if self.dhcp6:
+                dev_info['dhcp6'] = "true"
+            elif self.ipv6_addr:
+                dev_info['addresses'].append("{}/{}".format(self.ipv6_addr, self.ipv6_prefix))
+
+        if self.op == "mtuconfig":
+            if self.mtu:
+                dev_info['mtu'] = self.mtu
+
+        if self.op == "gwconfig":
+            if self.ipv4_gateway:
+                if self.metric:
+                    dev_info['routes'].append([{'metric': self.metric, 'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv4_gateway}])
+                # elif self.network != '0.0.0.0' and self.network_prefix != '0':
+                #     dev_info['routes'].append([{'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv4_gateway}])
+                else:
+                    dev_info['gateway4'] = self.ipv4_gateway
+
+            if self.ipv6_gateway:
+                if self.metric:
+                    dev_info['routes'].append([{'metric': self.metric, 'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv6_gateway}])
+                # elif self.network and self.network_prefix:
+                #     dev_info['routes'].append([{'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv6_gateway}])
+                else:
+                    dev_info['gateway6'] = self.ipv6_gateway
+
+        # Cleanup empty spaces
+        if self.op == "ipconfig":
+            if not len(dev_info['addresses']):
+                del dev_info['addresses']
+            if not dev_info['dhcp4']:
+                del dev_info['dhcp4']
+            if not dev_info['dhcp6']:
+                del dev_info['dhcp6']
+        elif self.op == "gwconfig":
+            if not len(dev_info['routes']):
+                del dev_info['routes']
+            if not dev_info['gateway4']:
+                del dev_info['gateway4']
+            if not dev_info['gateway6']:
+                del dev_info['gateway6']
+        elif self.op == "mtuconfig":
+            if not dev_info['mtu']:
+                del dev_info['mtu']
+
+        return dev_info
 
     def set_network_config(self):
         """
-        Set configuration to be used by cloud-init
+        Set configuration to be used by netplan
         """
         rc = 0
         cmd = None
         addr = None
         prefix = None
         dev = self.device
+        vlan_dev = "{}.{}".format(self.device, self.vlan)
         data = {}
+        conf_vlans = {}
 
-        if use_netplan:
-            data = self.data["network"]
-            res_data = self.data
+        data = self.data['network']
+        res_data = self.data
+
+        conf = data['ethernets']
+        if "vlans" in data:
+            conf_vlans = data['vlans']
+
+        if self.vlan == '-1':
+            conf[dev] = self.set_netplan_dev_data()
         else:
-            data = self.data
-
-        conf = data["ethernets"]
-
-        if self.op == "ipconfig":
-            conf[dev]['addresses'] = []
-            conf[dev]['dhcp4'] = None
-            conf[dev]['dhcp6'] = None
-        elif self.op == "gwconfig":
-            conf[dev]['routes'] = []
-            conf[dev]['gateway4'] = None
-            conf[dev]['gateway6'] = None
-        elif self.op == "mtuconfig":
-            conf[dev]['mtu'] = None
-
-        if data["ethernets"][dev]:
-            if self.op in ["ipconfig", "gwconfig"]:
-                if 'mtu' in data["ethernets"][dev]:
-                    conf[dev]['mtu'] = data["ethernets"][dev]['mtu']
-            if self.op in ["ipconfig", "mtuconfig"]:
-                if 'routes' in data["ethernets"][dev]:
-                    conf[dev]['routes'] = data["ethernets"][dev]['routes']
-                if 'gateway4' in data["ethernets"][dev]:
-                    conf[dev]['gateway4'] = data["ethernets"][dev]['gateway4']
-                if 'gateway6' in data["ethernets"][dev]:
-                    conf[dev]['gateway6'] = data["ethernets"][dev]['gateway6']
-            if self.op in ["mtuconfig", "gwconfig"]:
-                if 'addresses' in data["ethernets"][dev]:
-                    conf[dev]['addresses'] = data["ethernets"][dev]['addresses']
-                if 'dhcp4' in data["ethernets"][dev]:
-                    conf[dev]['dhcp4'] = data["ethernets"][dev]['dhcp4']
-                if 'dhcp6' in data["ethernets"][dev]:
-                    conf[dev]['dhcp6'] = data["ethernets"][dev]['dhcp6']
-
-        # Set configuration parameters
-        if self.op == "ipconfig":
-            if self.dhcp4:
-                conf[dev]['dhcp4'] = "true"
-            elif self.ipv4_addr:
-                conf[dev]['addresses'].append("{}/{}".format(self.ipv4_addr, self.ipv4_prefix))
-
-            if self.dhcp6:
-                conf[dev]['dhcp6'] = "true"
-            elif self.ipv6_addr:
-                conf[dev]['addresses'].append("{}/{}".format(self.ipv6_addr, self.ipv6_prefix))
-
-        if self.op == "mtuconfig":
-            if self.mtu:
-                conf[dev]['mtu'] = self.mtu
-
-        if self.op == "gwconfig":
-            if self.ipv4_gateway:
-                if self.metric:
-                    conf[dev]['routes'].append([{'metric': self.metric, 'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv4_gateway}])
-                # elif self.network != '0.0.0.0' and self.network_prefix != '0':
-                #     conf[dev]['routes'].append([{'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv4_gateway}])
-                else:
-                    conf[dev]['gateway4'] = self.ipv4_gateway
-
-            if self.ipv6_gateway:
-                if self.metric:
-                    conf[dev]['routes'].append([{'metric': self.metric, 'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv6_gateway}])
-                # elif self.network and self.network_prefix:
-                #     conf[dev]['routes'].append([{'to': "{}/{}".format(self.network, self.network_prefix), 'via': self.ipv6_gateway}])
-                else:
-                    conf[dev]['gateway6'] = self.ipv6_gateway
-
-        # Cleanup empty spaces
-        if self.op == "ipconfig":
-            if not len(conf[dev]['addresses']):
-                del conf[dev]['addresses']
-            if not conf[dev]['dhcp4']:
-                del conf[dev]['dhcp4']
-            if not conf[dev]['dhcp6']:
-                del conf[dev]['dhcp6']
-        elif self.op == "gwconfig":
-            if not len(conf[dev]['routes']):
-                del conf[dev]['routes']
-            if not conf[dev]['gateway4']:
-                del conf[dev]['gateway4']
-            if not conf[dev]['gateway6']:
-                del conf[dev]['gateway6']
-        elif self.op == "mtuconfig":
-            if not conf[dev]['mtu']:
-                del conf[dev]['mtu']
+            conf_vlans[vlan_dev] = self.set_netplan_dev_data()
 
         if len(conf[dev]):
-            if use_netplan:
-                res_data["network"]["ethernets"][dev] = conf[dev]
-                data = res_data
-            else:
-                data["ethernets"][dev] = conf[dev]
+            res_data['network']['ethernets'][dev] = conf[dev]
+            data = res_data
         else:
-            if use_netplan:
-                if dev in res_data["network"]["ethernets"]:
-                    del res_data["network"]["ethernets"][dev]
-                    data = res_data
-            else:
-                if dev in data["ethernets"]:
-                    del data["ethernets"][dev]
+            if dev in res_data['network']['ethernets']:
+                del res_data['network']['ethernets'][dev]
+                data = res_data
+
+        if self.vlan != '-1' and len(conf_vlans[vlan_dev]):
+            res_data['network']['vlans'][vlan_dev] = conf_vlans[vlan_dev]
+            data = res_data
 
         try:
             with open(network_config, 'w') as stream:
@@ -619,10 +651,7 @@ class BFCONFIG:
 
 
     def apply_config(self):
-        if use_netplan:
-            cmd = "bash -c 'netplan apply'"
-        else:
-            cmd = "bash -c 'cloud-init clean; cloud-init init; netplan apply'"
+        cmd = "bash -c 'netplan apply'"
         rc, output = get_status_output(cmd, verbose)
         if rc:
             bf_log ("ERR: Failed to apply configuration. RC={}\nOutput:\n{}".format(rc, output))
@@ -793,7 +822,7 @@ def verify_args(args):
     if (args.action not in SUPPORTED_ACTIONS):
         msg = "ERROR: Action {} is not supported".format(args.action)
         rc = 1
-    if args.op not in ["dnsconfig", "domainconfig"] and not args.port:
+    if args.op not in ['dnsconfig', 'domainconfig'] and not args.port:
         msg = "ERROR: Port number have to be provided. Use '--port'"
         rc = 1
 
@@ -857,7 +886,7 @@ def main():
     parser.add_argument('--buffer_size', action='append', nargs='+', help="Receive buffer size. Use multiple times")
     parser.add_argument('--roce_accl', action='append', nargs='+', help="field=value advanced accelerations. Use multiple times")
     parser.add_argument('--show',  help="Show parameter value")
-#    parser.add_argument('--vlan', help="VLAN=yes|no", default='no')
+    parser.add_argument('--vlan', help="vlan id", default='-1')
 #    parser.add_argument('--onboot', help="ONBOOT 'yes' or 'no'", default='yes')
     parser.add_argument('--verbose', action='store_true', help="Print verbose information", default=False)
     parser.add_argument('--version', action='store_true', help='Display program version information and exit')
@@ -874,9 +903,9 @@ def main():
 
     rc, msg = verify_args(args)
     if rc:
-        result["output"] = msg
-        result["status"] = rc
-        bf_log(result["output"], rc)
+        result['output'] = msg
+        result['status'] = rc
+        bf_log(result['output'], rc)
         sys.exit(rc)
 
     bfconfig = BFCONFIG(args)
@@ -900,9 +929,9 @@ def main():
     # Exit if restricted host
 
     if not os.path.exists(network_config):
-        result["output"] = "ERROR: network configuration file {} does not exist".format(network_config)
-        result["status"] = 1
-        bf_log(result["output"], 1)
+        result['output'] = "ERROR: network configuration file {} does not exist".format(network_config)
+        result['status'] = 1
+        bf_log(result['output'], 1)
         sys.exit(1)
 
     if not os.path.exists(network_config_orig):
@@ -916,7 +945,7 @@ def main():
     if args.verbose:
         print ("Operation: ", args.op)
 
-    if args.op in ["ipconfig", "mtuconfig", "gwconfig"]:
+    if args.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
         rc = bfconfig.set_network_config()
         if rc:
             sys.exit(rc)
@@ -934,12 +963,12 @@ def main():
                 if rc2:
                     bf_log("ERR: Failed to restore factory default configuration")
 
-    if args.op in ["dnsconfig", "domainconfig"]:
+    if args.op in ['dnsconfig', 'domainconfig']:
         rc = bfconfig.set_resolv_conf()
         if rc:
             sys.exit(rc)
 
-    if args.op in ["roceconfig"]:
+    if args.op in ['roceconfig']:
         if not os.path.exists(MLXREG):
             bf_log("ERR: mlxreg tool does not exist. Cannot show/set RoCE configuration")
             sys.exit(1)
