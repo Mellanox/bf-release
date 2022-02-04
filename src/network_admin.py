@@ -44,8 +44,9 @@ prog = os.path.basename(sys.argv[0])
 os.environ['PATH'] = '/opt/mellanox/iproute2/sbin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 MLXREG = '/usr/bin/mlxreg'
-SUPPORTED_OPERATIONS=['ipconfig', 'mtuconfig', 'gwconfig', 'dnsconfig', 'domainconfig', 'roceconfig']
+SUPPORTED_OPERATIONS=['ipconfig', 'mtuconfig', 'gwconfig', 'dnsconfig', 'domainconfig', 'roceconfig', 'vlanconfig']
 SUPPORTED_ACTIONS=['set', 'show']
+EXTENDED_ACTIONS=['set', 'show', 'list', 'remove']
 cloud_init_config = "/var/lib/cloud/seed/nocloud-net/network-config"
 netplan_config = "/etc/netplan/60-mlnx.yaml"
 
@@ -65,6 +66,19 @@ class BFCONFIG:
         self.op = args.op
         self.action = args.action
         self.verbose = args.verbose
+        self.vlan = args.vlan
+        self.vlan_dev = ""
+        self.vlan_remove = 0
+        self.result = {}
+        self.result['op'] = self.op
+        self.result['action'] = self.action
+        self.result['status'] = 0
+        self.result['output'] = ""
+
+        if self.op == 'vlanconfig' and self.action == 'remove':
+            self.op = 'ipconfig'
+            self.action = 'set'
+            self.vlan_remove = 1
 
         self.devices = []
         if self.port:
@@ -77,14 +91,10 @@ class BFCONFIG:
                 self.roce_devices = self.__get_roce_device__()
                 self.roce_device = self.roce_devices[0]
 
-        if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
-            try:
-                with open(network_config, 'r') as stream:
-                    self.data = yaml.safe_load(stream)
-            except Exception as e:
-                bf_log ("ERR: Failed to load configuration file {}. Exception: {}".format(network_config, e))
-                return None
+            self.vlan_dev = "{}.{}".format(self.device, self.vlan)
 
+        if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
+            self.load_network_data()
             self.ipv4_prefix = args.ipv4_prefix
             self.ipv6_prefix = args.ipv6_prefix
             self.dhcp4 = False
@@ -119,8 +129,6 @@ class BFCONFIG:
             self.metric = args.metric
             self.mtu = args.mtu
     #        self.nmcontrolled = args.nmcontrolled
-            self.vlan = args.vlan
-            self.vlan_dev = "{}.{}".format(self.device, self.vlan)
     #        self.onboot = args.onboot
 
         if self.op in ['dnsconfig', 'domainconfig']:
@@ -169,6 +177,9 @@ class BFCONFIG:
             except Exception as e:
                 bf_log ("ERR: Failed to read configuration file {}. Exception: {}".format(resolv_conf, e))
                 return None
+
+        if self.op in ['vlanconfig'] and self.action in ['list']:
+            self.load_network_data()
 
         if self.op in ['roceconfig']:
             self.type = args.type
@@ -224,6 +235,44 @@ class BFCONFIG:
                     else:
                         self.buffer_size.append(buffer_size[0])
 
+        if self.op in ['vlanconfig']:
+            self.skprio_up_egress = []
+            self.up_skprio_ingress = []
+
+            if args.skprio_up_egress:
+                for skprio_up_egress in args.skprio_up_egress:
+                    if ',' in skprio_up_egress[0]:
+                        self.skprio_up_egress.extend(skprio_up_egress[0].split(','))
+                    else:
+                        self.skprio_up_egress.append(skprio_up_egress[0])
+
+            if not len(self.skprio_up_egress):
+                self.skprio_up_egress = ['0', '0', '0', '0', '0', '0', '0', '0']
+
+
+            if args.up_skprio_ingress:
+                for up_skprio_ingress in args.up_skprio_ingress:
+                    if ',' in up_skprio_ingress[0]:
+                        self.up_skprio_ingress.extend(up_skprio_ingress[0].split(','))
+                    else:
+                        self.up_skprio_ingress.append(up_skprio_ingress[0])
+
+            if not len(self.up_skprio_ingress):
+                self.up_skprio_ingress = ['0', '0', '0', '0', '0', '0', '0', '0']
+
+        return
+
+    def load_network_data(self):
+        """
+        Load data from netplan configuration file
+        """
+        self.data = {}
+        try:
+            with open(network_config, 'r') as stream:
+                self.data = yaml.safe_load(stream)
+        except Exception as e:
+            bf_log ("ERR: Failed to load configuration file {}. Exception: {}".format(network_config, e))
+        return
 
     def __get_pci_device__(self):
         """
@@ -287,11 +336,10 @@ class BFCONFIG:
         """
         Show configurations
         """
-        result = {}
-        result['op'] = self.op
-        result['action'] = self.action
-        result['status'] = 0
-        result['output'] = ""
+
+        if self.op == 'vlanconfig':
+            self.show_vlan_config()
+            return
 
         if self.vlan == '-1':
             dev = self.device
@@ -299,7 +347,6 @@ class BFCONFIG:
         else:
             dev = self.vlan_dev
             network_type = 'vlans'
-
 
         if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
             data = {}
@@ -326,34 +373,34 @@ class BFCONFIG:
                 if 'dhcp6' in data[network_type][dev]:
                     ipv6_addr = "dhcp6"
 
-            result['output'] = "ipv4_addr={}/ipv4_prefix={}/ipv6_addr={}/ipv6_prefix={}".format(ipv4_addr, ipv4_prefix, ipv6_addr, ipv6_prefix)
+            self.result['output'] = "ipv4_addr={}/ipv4_prefix={}/ipv6_addr={}/ipv6_prefix={}".format(ipv4_addr, ipv4_prefix, ipv6_addr, ipv6_prefix)
 
         elif self.op == 'mtuconfig':
             if dev in data[network_type]:
                 if 'mtu' in data[network_type][dev]:
-                    result['output'] = "mtu={}".format(data[network_type][dev]['mtu'])
+                    self.result['output'] = "mtu={}".format(data[network_type][dev]['mtu'])
 
-            if 'mtu' not in result:
+            if 'mtu' not in self.result:
                 cmd = "cat /sys/class/net/{}/mtu".format(dev)
                 rc, mtu_output = get_status_output(cmd, verbose)
                 if rc:
                     bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
-                    result['status'] = rc
-                    result['output'] = "ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc)
-                    return result
-                result['output'] = "mtu={}".format(mtu_output.strip())
+                    self.result['status'] = rc
+                    self.result['output'] = "ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc)
+                    return
+                self.result['output'] = "mtu={}".format(mtu_output.strip())
 
         elif self.op == 'gwconfig':
             ipv4_gateway = ""
             ipv6_gateway = ""
             if dev in data[network_type]:
                 if 'routes' in data[network_type][dev]:
-                    result['routes'] = data[network_type][dev]['routes']
+                    self.result['routes'] = data[network_type][dev]['routes']
                 if 'gateway4' in data[network_type][dev]:
                     ipv4_gateway = data[network_type][dev]['gateway4']
                 if 'gateway6' in data[network_type][dev]:
                     ipv6_gateway = data[network_type][dev]['gateway6']
-            result['output'] = "ipv4_gateway={}/ipv6_gateway={}".format(ipv4_gateway, ipv6_gateway)
+            self.result['output'] = "ipv4_gateway={}/ipv6_gateway={}".format(ipv4_gateway, ipv6_gateway)
 
         elif self.op == 'dnsconfig':
             ipv4_nameservers = []
@@ -363,10 +410,10 @@ class BFCONFIG:
                     ipv4_nameservers.append(nameserver)
                 if validIPAddress(nameserver) == 'IPv6':
                     ipv6_nameservers.append(nameserver)
-            result['output'] = "ipv4_nameservers={}/ipv6_nameservers={}".format(','.join(ipv4_nameservers), ','.join(ipv6_nameservers))
+            self.result['output'] = "ipv4_nameservers={}/ipv6_nameservers={}".format(','.join(ipv4_nameservers), ','.join(ipv6_nameservers))
 
         elif self.op == 'domainconfig':
-            result['output'] = "domains={}".format(','.join(self.searchdomains))
+            self.result['output'] = "domains={}".format(','.join(self.searchdomains))
 
         elif self.op == 'roceconfig':
             trust = ""
@@ -384,9 +431,9 @@ class BFCONFIG:
             rc, mlnx_qos_output = get_status_output(cmd, verbose)
             if rc:
                 bf_log ("ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output))
-                result['status'] = rc
-                result['output'] = "ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output)
-                return result
+                self.result['status'] = rc
+                self.result['output'] = "ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output)
+                return
 
             in_dscp2prio = 0
             dscp2prio_map = {}
@@ -436,9 +483,9 @@ class BFCONFIG:
             rc, mlxreg_output = get_status_output(cmd, verbose)
             if rc:
                 bf_log ("ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output))
-                result['status'] = rc
-                result['output'] = "ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output)
-                return result
+                self.result['status'] = rc
+                self.result['output'] = "ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, mlxreg_output)
+                return
 
             for line in mlxreg_output.split('\n'):
                 if 'roce' in line:
@@ -450,16 +497,16 @@ class BFCONFIG:
                 cmd = 'bash -c "cat /sys/class/net/{device}/ecn/roce_np/enable/{prio} 2> /dev/null"'.format(ecn=ecn, device=self.roce_device, prio=i)
                 rc, ecn_output = get_status_output(cmd, verbose)
                 if rc:
-                    result['status'] = rc
-                    result['output'] = "ERR: Failed to read ECN. RC={}\nOutput:\n{}".format(rc, ecn_output)
+                    self.result['status'] = rc
+                    self.result['output'] = "ERR: Failed to read ECN. RC={}\nOutput:\n{}".format(rc, ecn_output)
                     bf_log ("ERR: Failed to get ECN. RC={}\nOutput:\n{}".format(rc, ecn_output))
-                    return result
+                    return
 
                 ecn.append(ecn_output.strip())
 
-            result['output'] = "trust={trust}/prio_tc={prio_tc}/ecn={ecn}/pfc={pfc}/cable_len={cable_len}/prio2buffer={prio2buffer}/buffer_size={buffer_size}/dscp2prio={dscp2prio}/ratelimit={ratelimit}/roce_accl={roce_accl}".format(trust=trust,prio_tc=prio_tc,ecn=','.join(ecn),pfc=pfc,cable_len=cable_len,prio2buffer=prio2buffer,buffer_size=buffer_size,dscp2prio=dscp2prio,ratelimit=ratelimit,roce_accl=','.join(roce_accl))
+            self.result['output'] = "trust={trust}/prio_tc={prio_tc}/ecn={ecn}/pfc={pfc}/cable_len={cable_len}/prio2buffer={prio2buffer}/buffer_size={buffer_size}/dscp2prio={dscp2prio}/ratelimit={ratelimit}/roce_accl={roce_accl}".format(trust=trust,prio_tc=prio_tc,ecn=','.join(ecn),pfc=pfc,cable_len=cable_len,prio2buffer=prio2buffer,buffer_size=buffer_size,dscp2prio=dscp2prio,ratelimit=ratelimit,roce_accl=','.join(roce_accl))
 
-        return result
+        return
 
     def set_netplan_dev_data(self):
         """
@@ -478,11 +525,12 @@ class BFCONFIG:
         if self.vlan == '-1':
             network_type = "ethernets"
         else:
-            data['vlans'] = {}
             dev = self.vlan_dev
             network_type = "vlans"
             dev_info['id'] = self.vlan
             dev_info['link'] = self.device
+            if 'vlans' not in data:
+                data['vlans'] = {}
 
         if self.op == "ipconfig":
             dev_info['addresses'] = []
@@ -496,7 +544,6 @@ class BFCONFIG:
             dev_info['mtu'] = None
 
         if dev in data[network_type]:
-#        if data[network_type][dev]:
             if self.op in ['ipconfig', 'gwconfig']:
                 if 'mtu' in data[network_type][dev]:
                     dev_info['mtu'] = data[network_type][dev]['mtu']
@@ -579,36 +626,33 @@ class BFCONFIG:
         prefix = None
         dev = self.device
         vlan_dev = "{}.{}".format(self.device, self.vlan)
-        data = {}
         conf_vlans = {}
 
-        data = self.data['network']
-        res_data = self.data
-
-        conf = data['ethernets']
-        if "vlans" in data:
-            conf_vlans = data['vlans']
+        conf = self.data['network']['ethernets']
+        if "vlans" in self.data['network']:
+            conf_vlans = self.data['network']['vlans']
 
         if self.vlan == '-1':
             conf[dev] = self.set_netplan_dev_data()
+            if len(conf[dev]):
+                self.data['network']['ethernets'][dev] = conf[dev]
+            else:
+                if dev in self.data['network']['ethernets']:
+                    del self.data['network']['ethernets'][dev]
         else:
             conf_vlans[vlan_dev] = self.set_netplan_dev_data()
-
-        if len(conf[dev]):
-            res_data['network']['ethernets'][dev] = conf[dev]
-            data = res_data
-        else:
-            if dev in res_data['network']['ethernets']:
-                del res_data['network']['ethernets'][dev]
-                data = res_data
-
-        if self.vlan != '-1' and len(conf_vlans[vlan_dev]):
-            res_data['network']['vlans'][vlan_dev] = conf_vlans[vlan_dev]
-            data = res_data
+            # VLAN configuration always includes 'id' and 'link' fields
+            if len(conf_vlans[vlan_dev]) > 2 and not self.vlan_remove:
+                self.data['network']['vlans'][vlan_dev] = conf_vlans[vlan_dev]
+            else:
+                if vlan_dev in self.data['network']['vlans']:
+                    del self.data['network']['vlans'][vlan_dev]
+                    if len(self.data['network']['vlans']) == 0:
+                        del self.data['network']['vlans']
 
         try:
             with open(network_config, 'w') as stream:
-                output = yaml.dump(data, stream, sort_keys=False)
+                output = yaml.dump(self.data, stream, sort_keys=False)
         except:
             bf_log ("ERR: Failed to write into configuration file {}".format(network_config))
             return 1
@@ -779,6 +823,75 @@ class BFCONFIG:
                 bf_log ("ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output))
                 return 1
 
+    def set_vlan_config(self):
+        """
+        Set VLAN configuration
+        """
+
+        ip_cmd = "ip link set link {} name {} type vlan id {} ".format(self.device, self.vlan_dev, self.vlan)
+
+        if self.skprio_up_egress:
+            egress_cmd = ip_cmd + "egress-qos-map " + " ".join(["{}:{}".format(i,self.skprio_up_egress[i]) for i in range(len(self.skprio_up_egress))])
+            rc, output = get_status_output(egress_cmd, verbose)
+            if rc:
+                self.result['status'] = rc
+                self.result['output'] = output
+                bf_log ("ERR: Failed to set skprio_up_egress. RC={}\nOutput:\n{}".format(rc, output))
+                return
+
+        if self.up_skprio_ingress:
+            ingress_cmd = ip_cmd + "ingress-qos-map " + " ".join(["{}:{}".format(i,self.up_skprio_ingress[i]) for i in range(len(self.up_skprio_ingress))])
+            rc, output = get_status_output(ingress_cmd, verbose)
+            if rc:
+                self.result['status'] = rc
+                self.result['output'] = output
+                bf_log ("ERR: Failed to set up_skprio_ingress. RC={}\nOutput:\n{}".format(rc, output))
+                return
+
+        return
+
+    def show_vlan_config(self):
+        """
+        Show VLAN configuration
+        """
+        ip_cmd = "ip -json -details link show {} ".format(self.vlan_dev)
+        rc, output = get_status_output(ip_cmd, verbose)
+        if rc:
+            self.result['status'] = rc
+            self.result['output'] = output
+            return
+
+        egress_qos = []
+        data = yaml.safe_load(output)[0]
+        for key in data['linkinfo']['info_data']['egress_qos']:
+            egress_qos.append("{}".format(key['to']))
+
+        self.result['output'] = 'skprio_up_egress='
+        self.result['output'] += ','.join(egress_qos)
+
+        cmd = "grep ^INGRESS /proc/net/vlan/{} | cut -d ':' -f 2- | sed -e 's/[0-9]://g' | sed -e 's/^ *//' | sed -r 's/[[:space:]]+/,/g' | tr -d '\n'".format(self.vlan_dev)
+        rc, output = get_status_output(cmd, verbose)
+        if rc:
+            self.result['status'] = rc
+            self.result['output'] = output.strip()
+            return
+
+        self.result['output'] += '/up_skprio_ingress={}'.format(output)
+        return
+
+    def list_vlans(self):
+        """
+        List VLANs
+        """
+        list = []
+        if 'vlans' in self.data['network']:
+            for vlan_dev in self.data['network']['vlans']:
+                if self.data['network']['vlans'][vlan_dev]['link'] == self.device:
+                    list.append(self.data['network']['vlans'][vlan_dev]['id'])
+
+            self.result['output'] = ','.join(list)
+
+
 def version():
     """Display program version information."""
     print(prog + ' ' + __version__)
@@ -816,11 +929,18 @@ def bf_log(msg, level=verbose):
 def verify_args(args):
     rc = 0
     msg = ""
+    supported_actions = SUPPORTED_ACTIONS
     if (args.op not in SUPPORTED_OPERATIONS):
         msg = "ERROR: Operation {} is not supported".format(args.op)
         rc = 1
-    if (args.action not in SUPPORTED_ACTIONS):
-        msg = "ERROR: Action {} is not supported".format(args.action)
+    if args.op == 'vlanconfig':
+        supported_actions = EXTENDED_ACTIONS
+        if args.vlan == '-1' and args.action in ['set', 'show', 'remove']:
+            msg = "ERROR: VLAN have to be provided. Use '--vlan'"
+            rc = 1
+
+    if (args.action not in supported_actions):
+        msg = "ERROR: Action {} is not supported by operation {}".format(args.action, args.op)
         rc = 1
     if args.op not in ['dnsconfig', 'domainconfig'] and not args.port:
         msg = "ERROR: Port number have to be provided. Use '--port'"
@@ -856,7 +976,7 @@ def main():
 #    parser.add_argument('--permanent', action='store_true', help="Keep network configuration permanent", default=True)
     parser.add_argument('--op', required='--version' not in sys.argv, choices=SUPPORTED_OPERATIONS, help="Operation")
     parser.add_argument('--device', help="Network device name")
-    parser.add_argument('--action', required='--version' not in sys.argv, choices=SUPPORTED_ACTIONS, help="Action")
+    parser.add_argument('--action', required='--version' not in sys.argv, choices=EXTENDED_ACTIONS, help="Action")
     parser.add_argument('--get_devices', action='store_true', help="Print network interface bound to the provided port", default=False)
     parser.add_argument('--port', required='--get-devices' in sys.argv, choices=['0', '1'], help="HCA port 0|1")
     parser.add_argument('--ipv4_addr', help="IPv4 address")
@@ -885,6 +1005,8 @@ def main():
     parser.add_argument('--ratelimit', action='append', nargs='+', help="Rate limit per traffic class (in Gbps). Use multiple times")
     parser.add_argument('--buffer_size', action='append', nargs='+', help="Receive buffer size. Use multiple times")
     parser.add_argument('--roce_accl', action='append', nargs='+', help="field=value advanced accelerations. Use multiple times")
+    parser.add_argument('--skprio_up_egress', action='append', nargs='+', help="Outbound sk_prio to UP priority mapping. Use multiple times")
+    parser.add_argument('--up_skprio_ingress', action='append', nargs='+', help="Inbound UP priority to sk_prio mapping. Use multiple times")
     parser.add_argument('--show',  help="Show parameter value")
     parser.add_argument('--vlan', help="vlan id", default='-1')
 #    parser.add_argument('--onboot', help="ONBOOT 'yes' or 'no'", default='yes')
@@ -914,8 +1036,9 @@ def main():
         print (bfconfig.devices)
         sys.exit(0)
 
-    if args.action == 'show':
-        result = bfconfig.show()
+    if bfconfig.action == 'show':
+        bfconfig.show()
+        result = bfconfig.result
         print(json.dumps(result, indent=None))
         sys.exit(result['status'])
 
@@ -945,7 +1068,7 @@ def main():
     if args.verbose:
         print ("Operation: ", args.op)
 
-    if args.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
+    if bfconfig.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
         rc = bfconfig.set_network_config()
         if rc:
             sys.exit(rc)
@@ -963,12 +1086,12 @@ def main():
                 if rc2:
                     bf_log("ERR: Failed to restore factory default configuration")
 
-    if args.op in ['dnsconfig', 'domainconfig']:
+    if bfconfig.op in ['dnsconfig', 'domainconfig']:
         rc = bfconfig.set_resolv_conf()
         if rc:
             sys.exit(rc)
 
-    if args.op in ['roceconfig']:
+    if bfconfig.op in ['roceconfig']:
         if not os.path.exists(MLXREG):
             bf_log("ERR: mlxreg tool does not exist. Cannot show/set RoCE configuration")
             sys.exit(1)
@@ -976,6 +1099,17 @@ def main():
         rc = bfconfig.set_roce_config()
         if rc:
             sys.exit(rc)
+
+    if bfconfig.op in ['vlanconfig']:
+        if bfconfig.action == 'set':
+            bfconfig.set_vlan_config()
+
+        elif bfconfig.action == 'list':
+            bfconfig.list_vlans()
+
+        result = bfconfig.result
+        print(json.dumps(result, indent=None))
+        sys.exit(result['status'])
 
     sys.exit(rc)
 
