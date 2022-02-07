@@ -654,7 +654,10 @@ class BFCONFIG:
             with open(network_config, 'w') as stream:
                 output = yaml.dump(self.data, stream, sort_keys=False)
         except:
+            self.result['status'] = rc
+            self.result['output'] = "ERR: Failed to write into configuration file {}".format(network_config)
             bf_log ("ERR: Failed to write into configuration file {}".format(network_config))
+
             return 1
 
         return rc
@@ -690,14 +693,21 @@ class BFCONFIG:
                                 stream.write("nameserver {}\n".format(str(nameserver)))
 
         except Exception as e:
-            bf_log ("ERR: Failed to write to the configuration file {}. Exception: {}".format(resolv_conf, e))
-            return 1
+            self.result['status'] = rc
+            self.result['output'] = "ERR: Failed to write to the configuration file {}. Exception: {}".format(resolv_conf, e)
+            bf_log (self.result['output'])
+
+        return
 
 
     def apply_config(self):
         cmd = "bash -c 'netplan apply'"
         rc, output = get_status_output(cmd, verbose)
-        if rc:
+        if rc or 'Error:' in output:
+            if not rc:
+                rc = 1
+            self.result['status'] = 1
+            self.result['output'] = "Failed to run netplan apply: {}".format(output)
             bf_log ("ERR: Failed to apply configuration. RC={}\nOutput:\n{}".format(rc, output))
 
         return rc
@@ -769,6 +779,12 @@ class BFCONFIG:
         ROCE configuration
         """
 
+        if not os.path.exists(MLXREG):
+            self.result['status'] = 1
+            self.result['output'] = "ERR: mlxreg tool does not exist. Cannot show/set RoCE configuration"
+            bf_log(self.result['output'])
+            return
+
         mlnx_qos_params = ""
 
         if self.ecn:
@@ -778,8 +794,10 @@ class BFCONFIG:
                                 echo {ecn} > /sys/class/net/{device}/ecn/roce_rp/enable/{prio} || true"'.format(ecn=ecn, device=self.roce_device, prio=i)
                 rc, ecn_output = get_status_output(cmd, verbose)
                 if rc:
-                    bf_log ("ERR: Failed to set ECN. RC={}\nOutput:\n{}".format(rc, ecn_output))
-                    return 1
+                    self.result['status'] = rc
+                    self.result['output'] = "ERR: Failed to set ECN. RC={}\nOutput:\n{}".format(rc, ecn_output)
+                    bf_log (self.result['output'])
+                    return
                 i += 1
 
         if self.type:
@@ -789,8 +807,10 @@ class BFCONFIG:
                 cmd = 'bash -c "mlxreg -d {} --yes --reg_name ROCE_ACCL --set \"roce_adp_retrans_en=0x0,roce_tx_window_en=0x0,roce_slow_restart_en=0x0\""'.format(self.pci_device)
             rc, type_output = get_status_output(cmd, verbose)
             if rc:
-                bf_log ("ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, type_output))
-                return 1
+                self.result['status'] = rc
+                self.result['output'] = "ERR: Failed to run mlxreg. RC={}\nOutput:\n{}".format(rc, type_output)
+                bf_log (self.result['output'])
+                return
 
         if self.trust:
             mlnx_qos_params += " --trust {}".format(self.trust)
@@ -820,8 +840,12 @@ class BFCONFIG:
             cmd = "bash -c 'mlnx_qos -i {} {}'".format(self.roce_device, mlnx_qos_params)
             rc, mlnx_qos_output = get_status_output(cmd, verbose)
             if rc:
-                bf_log ("ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output))
-                return 1
+                self.result['status'] = rc
+                self.result['output'] = "ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output)
+                bf_log (self.result['output'])
+                return
+
+        return
 
     def set_vlan_config(self):
         """
@@ -1071,7 +1095,9 @@ def main():
     if bfconfig.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
         rc = bfconfig.set_network_config()
         if rc:
-            sys.exit(rc)
+            result = bfconfig.result
+            print(json.dumps(result, indent=None))
+            sys.exit(result['status'])
 
         rc = bfconfig.apply_config()
         if rc:
@@ -1086,29 +1112,22 @@ def main():
                 if rc2:
                     bf_log("ERR: Failed to restore factory default configuration")
 
-    if bfconfig.op in ['dnsconfig', 'domainconfig']:
-        rc = bfconfig.set_resolv_conf()
-        if rc:
-            sys.exit(rc)
+    elif bfconfig.op in ['dnsconfig', 'domainconfig']:
+        bfconfig.set_resolv_conf()
 
-    if bfconfig.op in ['roceconfig']:
-        if not os.path.exists(MLXREG):
-            bf_log("ERR: mlxreg tool does not exist. Cannot show/set RoCE configuration")
-            sys.exit(1)
+    elif bfconfig.op in ['roceconfig']:
+        bfconfig.set_roce_config()
 
-        rc = bfconfig.set_roce_config()
-        if rc:
-            sys.exit(rc)
-
-    if bfconfig.op in ['vlanconfig']:
+    elif bfconfig.op in ['vlanconfig']:
         if bfconfig.action == 'set':
             bfconfig.set_vlan_config()
 
         elif bfconfig.action == 'list':
             bfconfig.list_vlans()
 
-        result = bfconfig.result
-        print(json.dumps(result, indent=None))
+    result = bfconfig.result
+    print(json.dumps(result, indent=None))
+    if result['status']:
         sys.exit(result['status'])
 
     sys.exit(rc)
