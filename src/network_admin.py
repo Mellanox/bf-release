@@ -950,6 +950,15 @@ def bf_log(msg, level=verbose):
     return 0
 
 
+def check_domain(domain):
+    if len(domain) > 63 or len(domain) < 2:
+        return 1
+    pattern = r'[^\.a-z0-9\-]'
+    if re.search(pattern, domain):
+        return 1
+    return 0
+
+
 def verify_args(args):
     rc = 0
     msg = ""
@@ -969,6 +978,18 @@ def verify_args(args):
     if args.op not in ['dnsconfig', 'domainconfig'] and not args.port:
         msg = "ERROR: Port number have to be provided. Use '--port'"
         rc = 1
+
+    if args.domains:
+        for domain in args.domains:
+            if ',' in domain[0]:
+                for domain in domain[0].split(','):
+                    if check_domain(domain):
+                        msg = "ERROR: Domain name is invalid"
+                        rc = 1
+            else:
+                if check_domain(domain[0]):
+                    msg = "ERROR: Domain name is invalid"
+                    rc = 1
 
     return rc, msg
 
@@ -1049,9 +1070,12 @@ def main():
 
     rc, msg = verify_args(args)
     if rc:
+        result['op'] = args.op
+        result['action'] = args.action
         result['output'] = msg
         result['status'] = rc
-        bf_log(result['output'], rc)
+        print(json.dumps(result, indent=None))
+        bf_log(result['output'])
         sys.exit(rc)
 
     bfconfig = BFCONFIG(args)
@@ -1076,6 +1100,8 @@ def main():
     # Exit if restricted host
 
     if not os.path.exists(network_config):
+        result['op'] = args.op
+        result['action'] = args.action
         result['output'] = "ERROR: network configuration file {} does not exist".format(network_config)
         result['status'] = 1
         bf_log(result['output'], 1)
