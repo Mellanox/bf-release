@@ -991,6 +991,31 @@ def verify_args(args):
                     msg = "ERROR: Domain name is invalid"
                     rc = 1
 
+    if args.ipv4_addr:
+        if validIPAddress(args.ipv4_addr) == 'Invalid':
+            msg = "ERROR: ipv4_addr is invalid"
+            rc = 1
+
+    if args.ipv6_addr:
+        if validIPAddress(args.ipv6_addr) == 'Invalid':
+            msg = "ERROR: ipv6_addr is invalid"
+            rc = 1
+
+    if args.network:
+        if validIPAddress(args.network) == 'Invalid':
+            msg = "ERROR: network is invalid"
+            rc = 1
+
+    if args.ipv4_gateway:
+        if validIPAddress(args.ipv4_gateway) == 'Invalid':
+            msg = "ERROR: ipv4_gateway is invalid"
+            rc = 1
+
+    if args.ipv6_gateway:
+        if validIPAddress(args.ipv6_gateway) == 'Invalid':
+            msg = "ERROR: ipv6_gateway is invalid"
+            rc = 1
+
     return rc, msg
 
 
