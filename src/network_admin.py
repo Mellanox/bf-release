@@ -979,6 +979,10 @@ def verify_args(args):
         msg = "ERROR: Port number have to be provided. Use '--port'"
         rc = 1
 
+    if args.op == 'mtuconfig' and not args.mtu:
+        msg = "ERROR: MTU have to be provided. Use '--mtu'"
+        rc = 1
+
     if args.domains:
         for domain in args.domains:
             if ',' in domain[0]:
