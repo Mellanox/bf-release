@@ -107,11 +107,20 @@ def fw_get_bfb_info(filename):
         "os": "",
         "krnl": "",
         "fw": "",
+        "fw-current": "",
         "spdk": "",
         "lsnap": "",
         "next": False,
         "active": False
     }
+    fw_current = ""
+
+    cmd = "flint -d /dev/mst/mt*_pciconf0 -qq q | grep 'FW Version' | awk '{print $NF}' | tail -1"
+    rc, output = get_status_output(cmd, False)
+    if not rc:
+        fw_current = output.strip()
+
+    ret["fw-current"] = fw_current
 
     if os.path.exists(filename):
         ret["success"] = True
@@ -160,6 +169,7 @@ def fw_get_bfb_info(filename):
     if os.path.exists(filename + ".versions"):
         with open(filename + ".versions", encoding='utf-8') as bfb_versions:
             ret = json.load(bfb_versions)
+            ret["fw-current"] = fw_current
             if "version" in ret:
                 ret["valid"] = True
 
