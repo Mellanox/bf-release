@@ -98,6 +98,20 @@ def bf_log(msg, prog="bfb_admin.py", level=verbose):
     return 0
 
 
+def fw_recover():
+    ret = {
+        "success": True,
+    }
+    cmd = "/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl \
+                --force-fw-update \
+                --fw-dir /opt/mellanox/mlnx-fw-updater/firmware/"
+    rc, output = get_status_output(cmd, False)
+    if rc:
+        ret["success"] = False
+
+    return json.dumps(ret)
+
+
 def fw_get_bfb_info(filename):
     current_versions = {}
     ret = {
@@ -225,6 +239,17 @@ def fw_activate_bfb(filename, now):
         "success": True,
         "reset_required": True
     }
+
+    # NIC FW update
+    dirpath = tempfile.mkdtemp()
+    other_root_dev = get_other_root_dev()
+    cmd = "mount /dev/mmcblk0p{p} {m}; \
+            {m}/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl \
+                --force-fw-update \
+                --fw-dir {m}/opt/mellanox/mlnx-fw-updater/firmware/; \
+                umount {m}".format(p=other_root_dev, m=dirpath)
+    rc, output = get_status_output(cmd, False)
+    shutil.rmtree(dirpath)
 
     if os.path.exists("/etc/bfb_version.json"):
         with open("/etc/bfb_version.json", encoding='utf-8') as versions:
