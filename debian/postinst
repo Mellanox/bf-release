@@ -53,6 +53,11 @@ fi
 
 mkdir -p /etc/kubelet.d
 
+if [ ! -e /etc/containerd/config.toml ]; then
+	mkdir -p /etc/containerd
+	cp /usr/share/bf-release/config.toml /etc/containerd
+fi
+
 enable_service()
 {
     service_name=$1

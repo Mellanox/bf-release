@@ -94,8 +94,8 @@ endif
 	dh_installdirs -p$(pname)  usr/bin
 
 ifeq ($(DIST_NAME_L), ubuntu)
-		dh_installdirs -p$(pname)  etc/containerd
-		install -m 0644	src/config.toml      debian/$(pname)/etc/containerd/config.toml
+		dh_installdirs -p$(pname)  usr/share/$(pname)
+		install -m 0644	src/config.toml      debian/$(pname)/usr/share/$(pname)/config.toml
 endif
 	install -m 0644	src/10-bf.conf       debian/$(pname)/etc/systemd/system/kubelet.service.d/10-bf.conf
 	install -m 0644	src/99-loopback.conf debian/$(pname)/etc/cni/net.d/99-loopback.conf
