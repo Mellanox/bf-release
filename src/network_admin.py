@@ -982,7 +982,7 @@ def verify_args(args):
         msg = "ERROR: Port number have to be provided. Use '--port'"
         rc = 1
 
-    if args.op == 'mtuconfig' and not args.mtu:
+    if args.op == 'mtuconfig' and args.action == 'set' and not args.mtu:
         msg = "ERROR: MTU have to be provided. Use '--mtu'"
         rc = 1
 
