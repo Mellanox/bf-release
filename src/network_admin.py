@@ -352,6 +352,11 @@ class BFCONFIG:
             data = {}
             data = self.data['network']
 
+        if dev not in data[network_type]:
+            self.result['status'] = 1
+            self.result['output'] = "ERR: Device {} does not exist.".format(dev)
+            return
+
         if self.op == 'ipconfig':
             ipv4_addr=""
             ipv4_prefix=""
