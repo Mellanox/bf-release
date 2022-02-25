@@ -352,10 +352,10 @@ class BFCONFIG:
             data = {}
             data = self.data['network']
 
-        if dev not in data[network_type]:
-            self.result['status'] = 1
-            self.result['output'] = "ERR: Device {} does not exist.".format(dev)
-            return
+            if dev not in data[network_type]:
+                self.result['status'] = 1
+                self.result['output'] = "ERR: Device {} does not exist.".format(dev)
+                return
 
         if self.op == 'ipconfig':
             ipv4_addr=""
@@ -424,15 +424,17 @@ class BFCONFIG:
             trust = ""
             cable_len = ""
             prio_tc = ""
+            prio_tc_arr = ['0','0','0','0','0','0','0','0']
             ecn = []
             pfc = ""
             prio2buffer = ""
             buffer_size = ""
             dscp2prio = ""
             ratelimit = ""
+            ratelimit_arr = []
             roce_accl = []
 
-            cmd = "bash -c 'mlnx_qos -i {}'".format(self.roce_device)
+            cmd = "bash -c 'mlnx_qos -i {} -a'".format(self.roce_device)
             rc, mlnx_qos_output = get_status_output(cmd, verbose)
             if rc:
                 bf_log ("ERR: Failed to run mlnx_qos. RC={}\nOutput:\n{}".format(rc, mlnx_qos_output))
@@ -460,7 +462,7 @@ class BFCONFIG:
                     in_pfc_configuration = 0
                     info = re.search(r'tc:(.*?)ratelimit:(.*?)tsa:(.*?)$', line)
                     prio_tc = info.group(1).strip()
-                    ratelimit = info.group(2).strip().rstrip(',')
+                    ratelimit_arr.append(info.group(2).strip().rstrip(','))
                 elif in_pfc_configuration:
                     if 'enabled' in line:
                         pfc = ','.join(line.split())
@@ -475,6 +477,9 @@ class BFCONFIG:
                 elif in_dscp2prio:
                     prio = int(line.split(':')[1][0])
                     dscp2prio_map[prio] += str(''.join(line.split(':')[2:]))
+                elif 'priority:' in line:
+                    prio = int(line.split(':')[1].strip())
+                    prio_tc_arr[prio] = prio_tc
 
             for i in range(8):
                 if len(dscp2prio_map[i]):
@@ -483,6 +488,8 @@ class BFCONFIG:
                     dscp2prio += '{}'.format('{},')
 
             dscp2prio = dscp2prio[:-1]
+            ratelimit = ','.join(ratelimit_arr)
+            prio_tc = ','.join(prio_tc_arr)
 
             cmd = "bash -c 'mlxreg -d {} --get --reg_name ROCE_ACCL'".format(self.pci_device)
             rc, mlxreg_output = get_status_output(cmd, verbose)
