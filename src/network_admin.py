@@ -1019,10 +1019,16 @@ def verify_args(args):
         if validIPAddress(args.ipv4_addr) == 'Invalid':
             msg = "ERROR: ipv4_addr is invalid"
             rc = 1
+        if not args.ipv4_prefix:
+            msg = "ERROR: ipv4_prefix is required"
+            rc = 1
 
     if args.ipv6_addr and args.ipv6_addr != 'dhcp':
         if validIPAddress(args.ipv6_addr) == 'Invalid':
             msg = "ERROR: ipv6_addr is invalid"
+            rc = 1
+        if not args.ipv6_prefix:
+            msg = "ERROR: ipv6_prefix is required"
             rc = 1
 
     if args.network:
