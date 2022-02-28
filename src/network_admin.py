@@ -1015,12 +1015,12 @@ def verify_args(args):
                     msg = "ERROR: Domain name is invalid"
                     rc = 1
 
-    if args.ipv4_addr:
+    if args.ipv4_addr and args.ipv4_addr != 'dhcp':
         if validIPAddress(args.ipv4_addr) == 'Invalid':
             msg = "ERROR: ipv4_addr is invalid"
             rc = 1
 
-    if args.ipv6_addr:
+    if args.ipv6_addr and args.ipv6_addr != 'dhcp':
         if validIPAddress(args.ipv6_addr) == 'Invalid':
             msg = "ERROR: ipv6_addr is invalid"
             rc = 1
