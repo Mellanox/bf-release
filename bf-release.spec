@@ -150,6 +150,9 @@ install -m 0755	src/crictl           %{buildroot}/usr/bin/crictl
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
 
+# BFB Info
+install -m 0755	src/bfb-info           %{buildroot}/usr/bin/bfb-info
+
 %post
 if [ $1 -eq 1 ]; then
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
@@ -271,5 +274,7 @@ fi
 
 %dir /var/lib/kubelet
 /var/lib/kubelet/config.yaml
+
+/usr/bin/bfb-info
 
 %changelog
