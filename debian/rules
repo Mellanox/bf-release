@@ -110,3 +110,6 @@ endif
 	install -m 0755	src/crictl           debian/$(pname)/usr/bin/crictl
 	install -m 0644	src/crictl.yaml      debian/$(pname)/etc/crictl.yaml
 	install -m 0644	src/config.yaml      debian/$(pname)/var/lib/kubelet/config.yaml
+
+	# BFB Info
+	install -m 0755	src/bfb-info           debian/$(pname)/usr/bin/bfb-info
