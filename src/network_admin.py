@@ -652,7 +652,7 @@ class BFCONFIG:
                 if dev in self.data['network']['ethernets']:
                     del self.data['network']['ethernets'][dev]
         else:
-            if vlan_dev not in self.data['network']['vlans']:
+            if 'vlans' not in self.data['network'] or vlan_dev not in self.data['network']['vlans']:
                 if self.op in ['mtuconfig', 'gwconfig']:
                     self.result['status'] = 1
                     self.result['output'] = "ERR: VLAN interface {} does not exist".format(vlan_dev)
