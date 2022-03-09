@@ -546,6 +546,7 @@ class BFCONFIG:
 
         if self.op == "ipconfig":
             dev_info['addresses'] = []
+            dev_info['renderer'] = "networkd"
             dev_info['dhcp4'] = None
             dev_info['dhcp6'] = None
         elif self.op == "gwconfig":
