@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
+
+if [ -e "$BOOTIMG_LOCATION" ]; then
+	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
+	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
+		    cut -d':' -f 2)
+fi
+
+
+OFED=`ofed_info -s | tr -d ':' | cut -d '-' -f2-`
+BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list | head -3 | tail -1 | awk '{print $4}'`
+BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list | head -3 | tail -1 | awk '{print $4}'`
+
+get_version()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list $1 | grep -w "$1" | awk '{print $2,$3}'
+	else
+		if (rpm -q --quiet $1); then
+			rpm -q --queryformat="[%{NAME}-%{VERSION}-%{RELEASE}]" $1
+		fi
+	fi
+}
+
+get_version_and_release()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list $1 | grep -w "$1" | awk '{print $3}'
+	else
+		if (rpm -q --quiet $1); then
+			rpm -q --queryformat="[%{VERSION}-%{RELEASE}]" $1
+		fi
+	fi
+}
+
+print_ofed()
+{
+	if [ -e /etc/debian_version ]; then
+		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | awk '{print $2, $3}'
+	else
+		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | xargs rpm -q --queryformat="[- %{NAME} %{VERSION}-%{RELEASE}]\n"
+	fi
+}
+
+cat << EOF
+Versions:
+ATF: $BUILD_ATF
+UEFI: $BUILD_UEFI
+DOCA Base (OFED): ${OFED}
+MFT: `get_version_and_release mft`
+DOCA: `get_version_and_release doca-prime-runtime`
+
+Firmware:
+BF1 FW: $BF1_FW
+BF2 FW: $BF2_FW
+
+mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
+`get_version mlx-regex`
+`get_version virtio-net-controller`
+`get_version collectx-clxapi`
+`get_version libvma`
+EOF
+
+if ( grep -q "DISTRIB_ID=Ubuntu" /etc/lsb-release > /dev/null 2>&1 ); then
+cat << EOF
+`get_version libxlio`
+`get_version dpcp`
+EOF
+fi
+
+cat << EOF
+
+SNAP3:
+- `get_version mlnx-libsnap`
+- `get_version mlnx-snap`
+- `get_version spdk`
+EOF
+
+if [ -e /etc/debian_version ]; then
+
+cat << EOF
+
+DOCA:
+$(for doca in `dpkg --list | grep -E 'doca|rxp' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
+EOF
+else
+cat << EOF
+
+DOCA:
+$(for doca in $(rpm -qa | grep -E 'doca|rxp' | sort -n); do echo "- `get_version $doca`";done)
+EOF
+fi
+
+cat << EOF
+
+OFED:
+`print_ofed`
+EOF

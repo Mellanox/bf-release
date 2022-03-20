@@ -98,6 +98,20 @@ def bf_log(msg, prog="bfb_admin.py", level=verbose):
     return 0
 
 
+def fw_recover():
+    ret = {
+        "success": True,
+    }
+    cmd = "/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl \
+                --force-fw-update \
+                --fw-dir /opt/mellanox/mlnx-fw-updater/firmware/"
+    rc, output = get_status_output(cmd, False)
+    if rc:
+        ret["success"] = False
+
+    return json.dumps(ret)
+
+
 def fw_get_bfb_info(filename):
     current_versions = {}
     ret = {
@@ -107,11 +121,20 @@ def fw_get_bfb_info(filename):
         "os": "",
         "krnl": "",
         "fw": "",
+        "fw-current": "",
         "spdk": "",
         "lsnap": "",
         "next": False,
         "active": False
     }
+    fw_current = ""
+
+    cmd = "flint -d /dev/mst/mt*_pciconf0 -qq q | grep 'FW Version' | awk '{print $NF}' | tail -1"
+    rc, output = get_status_output(cmd, False)
+    if not rc:
+        fw_current = output.strip()
+
+    ret["fw-current"] = fw_current
 
     if os.path.exists(filename):
         ret["success"] = True
@@ -160,6 +183,7 @@ def fw_get_bfb_info(filename):
     if os.path.exists(filename + ".versions"):
         with open(filename + ".versions", encoding='utf-8') as bfb_versions:
             ret = json.load(bfb_versions)
+            ret["fw-current"] = fw_current
             if "version" in ret:
                 ret["valid"] = True
 
@@ -215,6 +239,17 @@ def fw_activate_bfb(filename, now):
         "success": True,
         "reset_required": True
     }
+
+    # NIC FW update
+    dirpath = tempfile.mkdtemp()
+    other_root_dev = get_other_root_dev()
+    cmd = "mount /dev/mmcblk0p{p} {m}; \
+            {m}/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl \
+                --force-fw-update \
+                --fw-dir {m}/opt/mellanox/mlnx-fw-updater/firmware/; \
+                umount {m}".format(p=other_root_dev, m=dirpath)
+    rc, output = get_status_output(cmd, False)
+    shutil.rmtree(dirpath)
 
     if os.path.exists("/etc/bfb_version.json"):
         with open("/etc/bfb_version.json", encoding='utf-8') as versions:

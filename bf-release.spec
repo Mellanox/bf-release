@@ -1,5 +1,5 @@
 Name: bf-release		
-Version: 3.8.0	
+Version: 3.9.0
 Release: 1%{?dist}
 Summary: BF release information	
 
@@ -16,7 +16,7 @@ Vendor: Nvidia
 %description
 BlueField release files and post-installation configuration
 
-%{!?NETWORKING_TIMEOUT: %global NETWORKING_TIMEOUT 5}
+%{!?NETWORKING_TIMEOUT: %global NETWORKING_TIMEOUT 15}
 
 %define __python %{__python3}
 
@@ -150,10 +150,19 @@ install -m 0755	src/crictl           %{buildroot}/usr/bin/crictl
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
 
+# BFB Info
+install -m 0755	src/bfb-info           %{buildroot}/usr/bin/bfb-info
+
 %post
 if [ $1 -eq 1 ]; then
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
+    ofed_minor=${ofed_version#*-}
+    fw_minor=`rpm -q --queryformat "%{RELEASE}" mlnx-fw-updater 2> /dev/null 2>&1 | cut -d '-' -f 2`
+    fw_sub_minor=`echo $fw_minor | cut -d '.' -f -3`
+    if [ "$ofed_minor" == "$fw_sub_minor" ]; then
+        ofed_version=${ofed_version}.`echo $fw_minor | cut -d '.' -f 4`
+    fi
     sed -i -r -e "s/^(OFED)(.*)(-[0-9]*.*-[0-9]*.*):/MLNX_OFED_LINUX-${ofed_version} (\1\3):\n/" /usr/bin/ofed_info
     sed -i -r -e "s/(.*then echo) (.*):(.*)/\1 MLNX_OFED_LINUX-${ofed_version}: \3/" /usr/bin/ofed_info
     sed -i -r -e "s/(.*X-n\" ]; then echo) (.*)(; exit.*)/\1 ${ofed_version} \3/" /usr/bin/ofed_info
@@ -265,5 +274,7 @@ fi
 
 %dir /var/lib/kubelet
 /var/lib/kubelet/config.yaml
+
+/usr/bin/bfb-info
 
 %changelog

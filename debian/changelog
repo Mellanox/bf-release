@@ -1,3 +1,9 @@
+bf-release (3.9.0) UNRELEASED; urgency=medium
+
+  * Prepare for 3.9.0 release
+
+ -- Vladimir Sokolovsky <vlad@nvidia.com>  Fri, 28 Jan 2022 14:13:24 +0000
+
 bf-release (3.8.0) UNRELEASED; urgency=medium
 
   * Initial release
