@@ -146,7 +146,6 @@ install -d %{buildroot}/usr/bin
 # install -m 0644	src/config.toml      %{buildroot}/etc/containerd/config.toml
 install -m 0644	src/10-bf.conf       %{buildroot}/etc/systemd/system/kubelet.service.d/10-bf.conf
 install -m 0644	src/99-loopback.conf %{buildroot}/etc/cni/net.d/99-loopback.conf
-install -m 0755	src/crictl           %{buildroot}/usr/bin/crictl
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
 
@@ -269,7 +268,6 @@ fi
 %dir /etc/cni/net.d
 /etc/cni/net.d/99-loopback.conf
 
-/usr/bin/crictl
 /etc/crictl.yaml
 
 %dir /var/lib/kubelet
