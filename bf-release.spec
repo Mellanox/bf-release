@@ -182,7 +182,6 @@ perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
 sed -i -r -e 's/(GRUB_ENABLE_BLSCFG=).*/\1false/' /etc/default/grub
 sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
-sed -i 's/^LOOP_PERIOD=.*/LOOP_PERIOD=60/' /etc/ipmi/progconf
 
 # Use console
 sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
