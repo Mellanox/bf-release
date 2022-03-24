@@ -201,6 +201,20 @@ if [ -e /etc/default/networking ]; then
     sed -i -r -e "s/.*WAIT_ONLINE_TIMEOUT.*/WAIT_ONLINE_TIMEOUT=5/" /etc/default/networking
 fi
 
+# Verify/copy udev rules
+if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/82-net-setup-link.rules ]; then
+	mkdir -p /lib/udev/rules.d
+	/bin/rm -f /lib/udev/rules.d/82-net-setup-link.rules
+	/bin/rm -f /etc/udev/rules.d/82-net-setup-link.rules
+	install -m 0644 /usr/share/doc/mlnx-ofed-kernel-utils/examples/82-net-setup-link.rules /lib/udev/rules.d/82-net-setup-link.rules
+fi
+
+if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/vf-net-link-name.sh ]; then
+	mkdir -p /etc/infiniband
+	/bin/rm -f /etc/infiniband/vf-net-link-name.sh
+	install -m 0755 /usr/share/doc/mlnx-ofed-kernel-utils/examples/vf-net-link-name.sh /etc/infiniband/vf-net-link-name.sh
+fi
+
 enable_service()
 {
     service_name=$1
