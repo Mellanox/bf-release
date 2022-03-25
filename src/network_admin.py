@@ -667,6 +667,8 @@ class BFCONFIG:
                     del self.data['network']['vlans'][vlan_dev]
                     if len(self.data['network']['vlans']) == 0:
                         del self.data['network']['vlans']
+                        cmd = "ip link delete name {}".format(vlan_dev)
+                        rc, output = get_status_output(cmd, verbose)
 
         try:
             with open(network_config, 'w') as stream:
