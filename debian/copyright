@@ -4,7 +4,7 @@ Source: https://github.com/Mellanox/bf-release
 
 Files: *
 Copyright (c) 2011-2021 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
-License: GPLv2-and-2BSD
+License: GPLv2 or BSD
 
  * Redistribution and use in source and binary forms, with or without modification, 
  * are permitted provided that the following conditions are met:
