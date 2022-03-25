@@ -352,7 +352,7 @@ class BFCONFIG:
             data = {}
             data = self.data['network']
 
-            if dev not in data[network_type]:
+            if network_type not in data or dev not in data[network_type]:
                 self.result['status'] = 1
                 self.result['output'] = "ERR: Device {} does not exist.".format(dev)
                 return
