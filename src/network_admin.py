@@ -80,12 +80,14 @@ class BFCONFIG:
             self.action = 'set'
             self.vlan_remove = 1
 
+        self.offset = 2
         self.devices = []
         if self.port:
             self.pci_devices = self.__get_pci_device__()
             if self.pci_devices:
                 self.pci_device = self.pci_devices[0]
             if not self.device:
+                self.offset = self.__get_offset__()
                 self.devices = self.__get_device__()
                 self.device = self.devices[0]
                 self.roce_devices = self.__get_roce_device__()
@@ -294,6 +296,15 @@ class BFCONFIG:
 
         return devices
 
+    def __get_offset__(self):
+        mlnx_devs = self.pci_device[:-2]
+        cmd = "lspci -s {} | wc -l".format(mlnx_devs)
+        rc, output = get_status_output(cmd)
+        if rc:
+            return 2
+
+        return output.strip()
+
     def __get_device__(self):
         """
         Get network device assosiated with the port
@@ -301,8 +312,8 @@ class BFCONFIG:
         devices = []
         try:
             if self.port:
-                # Map port 0 to port 2 and port 1 to port 3 to get SF netdevice p0m0 and p1m0
-                cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_{}".format(str(int(self.port) + 2))
+                # Map port to SF
+                cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_{}".format(str(int(self.port) + int(self.offset)))
             else:
                 cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_*"
             rc, output = get_status_output(cmd)
