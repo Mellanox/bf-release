@@ -112,12 +112,4 @@ disable_service apt-daily-upgrade.timer
 disable_service kubelet.service
 disable_service containerd.service
 
-# NVSM
-/bin/rm -f /etc/nvsm/nvsm-ca.crt /etc/nvsm/nvsm-ca.key /etc/nvsm/nvsm-ca.srl /etc/nvsm/nvsm-server.crt /etc/nvsm/nvsm-server.csr /etc/nvsm/nvsm-server.key
-disable_service nvsm-api-gateway.service
-disable_service nvsm-core.service
-disable_service nvsm-mqtt.service
-disable_service nvsm-notifier.service
-disable_service nvsm.service
-
 #DEBHELPER#
