@@ -7,10 +7,14 @@ License: GPLv2/BSD
 Url: https://developer.nvidia.com/networking/doca
 Group: System Environment/Base
 Source: %{name}-%{version}.tar.gz
+%if "%_vendor" == "redhat"
 BuildRequires: redhat-lsb-core
+%endif
 BuildRequires: mlnx-ofa_kernel
 BuildRequires: mlxbf-bootimages	
+%if "%_vendor" == "redhat"
 Requires: containerd.io kexec-tools
+%endif
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
 Vendor: Nvidia
 %description
