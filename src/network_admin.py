@@ -1025,7 +1025,7 @@ def verify_args(args):
                         msg = "ERROR: Domain name is invalid"
                         rc = 1
             else:
-                if check_domain(domain[0]):
+                if len(domain[0]) != 0 and check_domain(domain[0]):
                     msg = "ERROR: Domain name is invalid"
                     rc = 1
 
