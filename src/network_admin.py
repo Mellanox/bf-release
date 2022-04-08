@@ -397,14 +397,13 @@ class BFCONFIG:
                     self.result['output'] = "mtu={}".format(data[network_type][dev]['mtu'])
 
             if 'mtu' not in self.result:
-                cmd = "cat /sys/class/net/{}/mtu".format(dev)
-                rc, mtu_output = get_status_output(cmd, verbose)
-                if rc:
+                mtu = get_mtu(dev)
+                if mtu == 0:
                     bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
                     self.result['status'] = rc
                     self.result['output'] = "ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc)
                     return
-                self.result['output'] = "mtu={}".format(mtu_output.strip())
+                self.result['output'] = "mtu={}".format(str(mtu))
 
         elif self.op == 'gwconfig':
             ipv4_gateway = ""
@@ -545,6 +544,8 @@ class BFCONFIG:
 
         network_type = ""
 
+        dev_info['renderer'] = "networkd"
+
         if self.vlan == '-1':
             network_type = "ethernets"
         else:
@@ -557,7 +558,6 @@ class BFCONFIG:
 
         if self.op == "ipconfig":
             dev_info['addresses'] = []
-            dev_info['renderer'] = "networkd"
             dev_info['dhcp4'] = None
             dev_info['dhcp6'] = None
         elif self.op == "gwconfig":
@@ -669,6 +669,14 @@ class BFCONFIG:
                     self.result['status'] = 1
                     self.result['output'] = "ERR: VLAN interface {} does not exist".format(vlan_dev)
                     return 1
+
+            if self.op == 'mtuconfig':
+                parent_mtu = get_mtu(self.device)
+                if parent_mtu < int(self.mtu):
+                    self.result['status'] = 1
+                    self.result['output'] = "ERR: Parent interface MTU should not be less than VLAN's MTU".format(vlan_dev)
+                    return 1
+
             conf_vlans[vlan_dev] = self.set_netplan_dev_data()
             # VLAN configuration always includes 'id' and 'link' fields
             if len(conf_vlans[vlan_dev]) > 2 and not self.vlan_remove:
@@ -1062,6 +1070,13 @@ def verify_args(args):
 
     return rc, msg
 
+def get_mtu(dev):
+    cmd = "cat /sys/class/net/{}/mtu".format(dev)
+    rc, mtu = get_status_output(cmd, verbose)
+    if rc:
+        bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
+        return 0
+    return int(mtu.strip())
 
 def validIPAddress(IP: str) -> str:
     try:
