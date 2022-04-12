@@ -17,7 +17,7 @@ src/kexec_reboot - Script to reboot DPU using kexec
 
 src/config.toml - containerd configuration
 
-# kubelet conifugration
+# kubelet configuration
 src/10-bf.conf
 
 src/config.yaml
