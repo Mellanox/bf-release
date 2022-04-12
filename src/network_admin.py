@@ -924,13 +924,11 @@ class BFCONFIG:
             self.result['output'] = output
             return
 
-        egress_qos = []
+        egress_qos = ['0', '0', '0', '0', '0', '0', '0', '0']
         data = yaml.safe_load(output)[0]
         if 'egress_qos' in data['linkinfo']['info_data']:
             for key in data['linkinfo']['info_data']['egress_qos']:
-                egress_qos.append("{}".format(key['to']))
-        else:
-            egress_qos = ['0', '0', '0', '0', '0', '0', '0', '0']
+                egress_qos[key['from']] = str(key['to'])
 
         self.result['output'] = 'skprio_up_egress='
         self.result['output'] += ','.join(egress_qos)
