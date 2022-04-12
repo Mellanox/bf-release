@@ -31,6 +31,9 @@ override_dh_auto_install:
 	install -m 0755	src/mlnx-post-hlk    debian/$(pname)/opt/mellanox/hlk/mlnx-post-hlk
 	install -m 0755	src/kexec_reboot     debian/$(pname)/sbin/kexec_reboot
 
+	dh_installdirs -p$(pname)	opt/mellanox/doca/services/telemetry
+	install -m 0755 src/import_doca_telemetry.sh debian/$(pname)/opt/mellanox/doca/services/telemetry
+
 	# Sysctl
 	dh_installdirs -p$(pname)  usr/lib/sysctl.d/
 	install -m 0644	src/90-bluefield.conf	debian/$(pname)/usr/lib/sysctl.d/
