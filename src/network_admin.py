@@ -262,6 +262,11 @@ class BFCONFIG:
             if not len(self.up_skprio_ingress):
                 self.up_skprio_ingress = ['0', '0', '0', '0', '0', '0', '0', '0']
 
+            for prio in self.skprio_up_egress + self.up_skprio_ingress:
+                if int(prio) > 7 or int(prio) < 0:
+                    self.result['status'] = 1
+                    self.result['output'] = "ERROR: Illegal skprio: {}. Legal range 0-7".format(prio)
+
         return
 
     def load_network_data(self):
@@ -1161,6 +1166,9 @@ def main():
         sys.exit(rc)
 
     bfconfig = BFCONFIG(args)
+    if bfconfig.result['status']:
+        print(json.dumps(bfconfig.result, indent=None))
+        sys.exit(bfconfig.result['status'])
 
     if args.get_devices:
         print (bfconfig.devices)
