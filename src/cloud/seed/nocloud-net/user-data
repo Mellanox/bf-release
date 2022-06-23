@@ -4,7 +4,7 @@ debug:
 users:
   - name: ubuntu
     lock_passwd: False
-    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
+    groups: adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
     plain_text_passwd: 'ubuntu'
