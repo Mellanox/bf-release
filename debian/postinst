@@ -50,6 +50,10 @@ if [ -e /etc/default/watchdog ]; then
 	sed -i -r -e 's/watchdog_module=.*/watchdog_module="sbsa_gwdt"/' /etc/default/watchdog
 fi
 
+if [ -e /etc/cloud/cloud.cfg ]; then
+	sed -i -r -e "s/(preserve_hostname:).*/\1 true/" /etc/cloud/cloud.cfg
+fi
+
 mkdir -p /etc/kubelet.d
 
 if [ ! -e /etc/containerd/config.toml ]; then
