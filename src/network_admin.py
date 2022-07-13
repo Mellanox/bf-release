@@ -250,6 +250,9 @@ class BFCONFIG:
 
             if not len(self.skprio_up_egress):
                 self.skprio_up_egress = ['0', '0', '0', '0', '0', '0', '0', '0']
+            elif len(self.skprio_up_egress) != 8:
+                self.result['status'] = 1
+                self.result['output'] = "ERROR: Illegal skprio: {}. 8 skprio_up_egress priorities are expected"
 
 
             if args.up_skprio_ingress:
@@ -261,6 +264,9 @@ class BFCONFIG:
 
             if not len(self.up_skprio_ingress):
                 self.up_skprio_ingress = ['0', '0', '0', '0', '0', '0', '0', '0']
+            elif len(self.up_skprio_ingress) != 8:
+                self.result['status'] = 1
+                self.result['output'] = "ERROR: Illegal skprio: {}. 8 up_skprio_ingress priorities are expected"
 
             for prio in self.skprio_up_egress + self.up_skprio_ingress:
                 if int(prio) > 7 or int(prio) < 0:
