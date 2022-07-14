@@ -10,8 +10,8 @@ fi
 
 
 OFED=`ofed_info -s | tr -d ':' | cut -d '-' -f2-`
-BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list | head -3 | tail -1 | awk '{print $4}'`
 BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list | head -3 | tail -1 | awk '{print $4}'`
+BF3_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list | head -3 | tail -1 | awk '{print $4}'`
 
 get_version()
 {
@@ -53,8 +53,8 @@ MFT: `get_version_and_release mft`
 DOCA: `get_version_and_release doca-prime-runtime`
 
 Firmware:
-BF1 FW: $BF1_FW
 BF2 FW: $BF2_FW
+BF3 FW: $BF3_FW
 
 mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
 `get_version mlx-regex`
