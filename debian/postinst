@@ -27,7 +27,6 @@ fi
 perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
 sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
-sed -i 's/^LOOP_PERIOD=.*/LOOP_PERIOD=60/' /etc/ipmi/progconf
 
 # Use console
 sed -i 's/^#GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
@@ -56,6 +55,20 @@ mkdir -p /etc/kubelet.d
 if [ ! -e /etc/containerd/config.toml ]; then
 	mkdir -p /etc/containerd
 	cp /usr/share/bf-release/config.toml /etc/containerd
+fi
+
+# Verify/copy udev rules
+if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/82-net-setup-link.rules ]; then
+	mkdir -p /lib/udev/rules.d
+	/bin/rm -f /lib/udev/rules.d/82-net-setup-link.rules
+	/bin/rm -f /etc/udev/rules.d/82-net-setup-link.rules
+	install -m 0644 /usr/share/doc/mlnx-ofed-kernel-utils/examples/82-net-setup-link.rules /lib/udev/rules.d/82-net-setup-link.rules
+fi
+
+if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/vf-net-link-name.sh ]; then
+	mkdir -p /etc/infiniband
+	/bin/rm -f /etc/infiniband/vf-net-link-name.sh
+	install -m 0755 /usr/share/doc/mlnx-ofed-kernel-utils/examples/vf-net-link-name.sh /etc/infiniband/vf-net-link-name.sh
 fi
 
 enable_service()
@@ -98,13 +111,5 @@ disable_service unattended-upgrades.service
 disable_service apt-daily-upgrade.timer
 disable_service kubelet.service
 disable_service containerd.service
-
-# NVSM
-/bin/rm -f /etc/nvsm/nvsm-ca.crt /etc/nvsm/nvsm-ca.key /etc/nvsm/nvsm-ca.srl /etc/nvsm/nvsm-server.crt /etc/nvsm/nvsm-server.csr /etc/nvsm/nvsm-server.key
-disable_service nvsm-api-gateway.service
-disable_service nvsm-core.service
-disable_service nvsm-mqtt.service
-disable_service nvsm-notifier.service
-disable_service nvsm.service
 
 #DEBHELPER#

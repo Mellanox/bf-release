@@ -14,4 +14,5 @@ chpasswd:
   expire: True
 
 runcmd:
+  - [ /opt/mellanox/doca/services/telemetry/import_doca_telemetry.sh ]
   - [ /usr/bin/bfrshlog, "INFO: DPU is ready" ]

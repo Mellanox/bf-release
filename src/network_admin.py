@@ -80,12 +80,14 @@ class BFCONFIG:
             self.action = 'set'
             self.vlan_remove = 1
 
+        self.offset = 2
         self.devices = []
         if self.port:
             self.pci_devices = self.__get_pci_device__()
             if self.pci_devices:
                 self.pci_device = self.pci_devices[0]
             if not self.device:
+                self.offset = self.__get_offset__()
                 self.devices = self.__get_device__()
                 self.device = self.devices[0]
                 self.roce_devices = self.__get_roce_device__()
@@ -294,6 +296,15 @@ class BFCONFIG:
 
         return devices
 
+    def __get_offset__(self):
+        mlnx_devs = self.pci_device[:-2]
+        cmd = "lspci -s {} | wc -l".format(mlnx_devs)
+        rc, output = get_status_output(cmd)
+        if rc:
+            return 2
+
+        return output.strip()
+
     def __get_device__(self):
         """
         Get network device assosiated with the port
@@ -301,8 +312,8 @@ class BFCONFIG:
         devices = []
         try:
             if self.port:
-                # Map port 0 to port 2 and port 1 to port 3 to get SF netdevice p0m0 and p1m0
-                cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_{}".format(str(int(self.port) + 2))
+                # Map port to SF
+                cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_{}".format(str(int(self.port) + int(self.offset)))
             else:
                 cmd = "/bin/ls -d /sys/class/net/*/device/infiniband/mlx5_*"
             rc, output = get_status_output(cmd)
@@ -352,7 +363,7 @@ class BFCONFIG:
             data = {}
             data = self.data['network']
 
-            if dev not in data[network_type]:
+            if network_type not in data or dev not in data[network_type]:
                 self.result['status'] = 1
                 self.result['output'] = "ERR: Device {} does not exist.".format(dev)
                 return
@@ -386,14 +397,13 @@ class BFCONFIG:
                     self.result['output'] = "mtu={}".format(data[network_type][dev]['mtu'])
 
             if 'mtu' not in self.result:
-                cmd = "cat /sys/class/net/{}/mtu".format(dev)
-                rc, mtu_output = get_status_output(cmd, verbose)
-                if rc:
+                mtu = get_mtu(dev)
+                if mtu == 0:
                     bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
                     self.result['status'] = rc
                     self.result['output'] = "ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc)
                     return
-                self.result['output'] = "mtu={}".format(mtu_output.strip())
+                self.result['output'] = "mtu={}".format(str(mtu))
 
         elif self.op == 'gwconfig':
             ipv4_gateway = ""
@@ -534,6 +544,8 @@ class BFCONFIG:
 
         network_type = ""
 
+        dev_info['renderer'] = "networkd"
+
         if self.vlan == '-1':
             network_type = "ethernets"
         else:
@@ -546,7 +558,6 @@ class BFCONFIG:
 
         if self.op == "ipconfig":
             dev_info['addresses'] = []
-            dev_info['renderer'] = "networkd"
             dev_info['dhcp4'] = None
             dev_info['dhcp6'] = None
         elif self.op == "gwconfig":
@@ -658,6 +669,14 @@ class BFCONFIG:
                     self.result['status'] = 1
                     self.result['output'] = "ERR: VLAN interface {} does not exist".format(vlan_dev)
                     return 1
+
+            if self.op == 'mtuconfig':
+                parent_mtu = get_mtu(self.device)
+                if parent_mtu < int(self.mtu):
+                    self.result['status'] = 1
+                    self.result['output'] = "ERR: Parent interface MTU should not be less than VLAN's MTU".format(vlan_dev)
+                    return 1
+
             conf_vlans[vlan_dev] = self.set_netplan_dev_data()
             # VLAN configuration always includes 'id' and 'link' fields
             if len(conf_vlans[vlan_dev]) > 2 and not self.vlan_remove:
@@ -667,6 +686,8 @@ class BFCONFIG:
                     del self.data['network']['vlans'][vlan_dev]
                     if len(self.data['network']['vlans']) == 0:
                         del self.data['network']['vlans']
+                        cmd = "ip link delete name {}".format(vlan_dev)
+                        rc, output = get_status_output(cmd, verbose)
 
         try:
             with open(network_config, 'w') as stream:
@@ -903,13 +924,11 @@ class BFCONFIG:
             self.result['output'] = output
             return
 
-        egress_qos = []
+        egress_qos = ['0', '0', '0', '0', '0', '0', '0', '0']
         data = yaml.safe_load(output)[0]
         if 'egress_qos' in data['linkinfo']['info_data']:
             for key in data['linkinfo']['info_data']['egress_qos']:
-                egress_qos.append("{}".format(key['to']))
-        else:
-            egress_qos = ['0', '0', '0', '0', '0', '0', '0', '0']
+                egress_qos[key['from']] = str(key['to'])
 
         self.result['output'] = 'skprio_up_egress='
         self.result['output'] += ','.join(egress_qos)
@@ -1012,7 +1031,7 @@ def verify_args(args):
                         msg = "ERROR: Domain name is invalid"
                         rc = 1
             else:
-                if check_domain(domain[0]):
+                if len(domain[0]) != 0 and check_domain(domain[0]):
                     msg = "ERROR: Domain name is invalid"
                     rc = 1
 
@@ -1049,6 +1068,13 @@ def verify_args(args):
 
     return rc, msg
 
+def get_mtu(dev):
+    cmd = "cat /sys/class/net/{}/mtu".format(dev)
+    rc, mtu = get_status_output(cmd, verbose)
+    if rc:
+        bf_log ("ERR: Failed to get MTU for {} interface. RC={}".format(dev, rc))
+        return 0
+    return int(mtu.strip())
 
 def validIPAddress(IP: str) -> str:
     try:

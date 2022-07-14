@@ -7,10 +7,14 @@ License: GPLv2/BSD
 Url: https://developer.nvidia.com/networking/doca
 Group: System Environment/Base
 Source: %{name}-%{version}.tar.gz
+%if "%_vendor" == "redhat"
 BuildRequires: redhat-lsb-core
+%endif
 BuildRequires: mlnx-ofa_kernel
 BuildRequires: mlxbf-bootimages	
+%if "%_vendor" == "redhat"
 Requires: containerd.io kexec-tools
+%endif
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
 Vendor: Nvidia
 %description
@@ -182,7 +186,6 @@ perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
 sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
 sed -i -r -e 's/(GRUB_ENABLE_BLSCFG=).*/\1false/' /etc/default/grub
 sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
-sed -i 's/^LOOP_PERIOD=.*/LOOP_PERIOD=60/' /etc/ipmi/progconf
 
 # Use console
 sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
@@ -200,6 +203,22 @@ fi
 
 if [ -e /etc/default/networking ]; then
     sed -i -r -e "s/.*WAIT_ONLINE_TIMEOUT.*/WAIT_ONLINE_TIMEOUT=5/" /etc/default/networking
+fi
+
+# Verify/copy udev rules
+rule82=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel-*/82-net-setup-link.rules 2> /dev/null`
+if [ -n "$rule82" ]; then
+	mkdir -p /lib/udev/rules.d
+	/bin/rm -f /lib/udev/rules.d/82-net-setup-link.rules
+	/bin/rm -f /etc/udev/rules.d/82-net-setup-link.rules
+	install -m 0644 $rule82 /lib/udev/rules.d/82-net-setup-link.rules
+fi
+
+vf_net=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel-*/vf-net-link-name.sh 2> /dev/null`
+if [ -n "$vf_net" ]; then
+	mkdir -p /etc/infiniband
+	/bin/rm -f /etc/infiniband/vf-net-link-name.sh
+	install -m 0755 $vf_net /etc/infiniband/vf-net-link-name.sh
 fi
 
 enable_service()
