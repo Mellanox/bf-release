@@ -8,6 +8,7 @@ pname := bf-release
 DIST_NAME := $(shell lsb_release -si)
 DIST_NAME_L := $(shell lsb_release -si | tr A-Z a-z)
 DIST_VERSION := $(shell lsb_release -sr)
+DIST_MAJOR := $(shell lsb_release -sr | cut -d '.' -f 1)
 OFED_VERSION := $(shell ofed_info -n)
 BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules | grep -o [0-9].*bluefield | head -1)
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
@@ -46,7 +47,11 @@ override_dh_auto_install:
 	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+ifeq ($(DIST_MAJOR), 22)
+	echo "# deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+else
 	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+endif
 
 	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
 
