@@ -236,6 +236,9 @@ disable_service()
     systemctl disable $service_name || true
 }
 
+# Enable tmpfs in /tmp
+enable_service tmp.mount
+
 enable_service mlx-regex.service
 enable_service NetworkManager.service
 enable_service NetworkManager-wait-online.service
