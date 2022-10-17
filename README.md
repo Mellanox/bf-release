@@ -32,6 +32,8 @@ src/override-networkd-wait-online - networkd-wait-online override.conf
 
 src/override-networking - networking override.conf
 
+src/override-netplan-ovs-cleanup - netplan-ovs-cleanup override.conf
+
 src/90-bluefield.conf - sysctl configuration file
 
 # NetworkManager configuration

@@ -64,11 +64,13 @@ endif
 	dh_installdirs -p$(pname)  etc/systemd/system/NetworkManager-wait-online.service.d
 	dh_installdirs -p$(pname)  etc/systemd/system/systemd-networkd-wait-online.service.d
 	dh_installdirs -p$(pname)  etc/systemd/system/networking.service.d
+	dh_installdirs -p$(pname)  etc/systemd/system/netplan-ovs-cleanup.service.d
 
 ifeq ($(DIST_NAME_L), ubuntu)
 	install -m 0644	src/override-NetworkManager-wait-online debian/$(pname)/etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 	install -m 0644	src/override-networkd-wait-online       debian/$(pname)/etc/systemd/system/systemd-networkd-wait-online.service.d/override.conf
 	install -m 0644	src/override-networking                 debian/$(pname)/etc/systemd/system/networking.service.d/override.conf
+	install -m 0644	src/override-netplan-ovs-cleanup        debian/$(pname)/etc/systemd/system/netplan-ovs-cleanup.service.d/override.conf
 endif
 
 	# Network configuration
