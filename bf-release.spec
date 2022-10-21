@@ -219,6 +219,8 @@ if [ -n "$vf_net" ]; then
 	mkdir -p /etc/infiniband
 	/bin/rm -f /etc/infiniband/vf-net-link-name.sh
 	install -m 0755 $vf_net /etc/infiniband/vf-net-link-name.sh
+	# Add a workaround for the port names staring with c<n>
+	sed -i  -e 's@^PORT_NAME=$1@PORT_NAME=`echo ${1} | sed -e "s/c[[:digit:]]\\+//"`@' /etc/infiniband/vf-net-link-name.sh
 fi
 
 enable_service()
