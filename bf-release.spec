@@ -206,7 +206,7 @@ if [ -e /etc/default/networking ]; then
 fi
 
 # Verify/copy udev rules
-rule82=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel-*/82-net-setup-link.rules 2> /dev/null`
+rule82=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel*/82-net-setup-link.rules 2> /dev/null`
 if [ -n "$rule82" ]; then
 	mkdir -p /lib/udev/rules.d
 	/bin/rm -f /lib/udev/rules.d/82-net-setup-link.rules
@@ -214,7 +214,7 @@ if [ -n "$rule82" ]; then
 	install -m 0644 $rule82 /lib/udev/rules.d/82-net-setup-link.rules
 fi
 
-vf_net=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel-*/vf-net-link-name.sh 2> /dev/null`
+vf_net=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel*/vf-net-link-name.sh 2> /dev/null`
 if [ -n "$vf_net" ]; then
 	mkdir -p /etc/infiniband
 	/bin/rm -f /etc/infiniband/vf-net-link-name.sh
