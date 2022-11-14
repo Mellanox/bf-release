@@ -10,8 +10,9 @@ fi
 
 
 OFED=`ofed_info -s | tr -d ':' | cut -d '-' -f2-`
-BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list | head -3 | tail -1 | awk '{print $4}'`
-BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list | head -3 | tail -1 | awk '{print $4}'`
+BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+BF3_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 
 get_version()
 {
@@ -53,8 +54,27 @@ MFT: `get_version_and_release mft`
 DOCA: `get_version_and_release doca-prime-runtime`
 
 Firmware:
+EOF
+
+if [ -n "$BF1_FW" ]; then
+cat << EOF
 BF1 FW: $BF1_FW
+EOF
+fi
+
+if [ -n "$BF2_FW" ]; then
+cat << EOF
 BF2 FW: $BF2_FW
+EOF
+fi
+
+if [ -n "$BF3_FW" ]; then
+cat << EOF
+BF3 FW: $BF3_FW
+EOF
+fi
+
+cat << EOF
 
 mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
 `get_version mlx-regex`
