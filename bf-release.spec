@@ -1,6 +1,6 @@
 Name: bf-release		
 Version: 3.9.3
-Release: 1%{?dist}
+Release: 1.2211.LTS%{?dist}
 Summary: BF release information	
 
 License: GPLv2/BSD
