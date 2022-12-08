@@ -2,7 +2,7 @@ Source: bf-release
 Section: misc
 Priority: optional
 Homepage: https://developer.nvidia.com/networking/doca
-Build-Depends: debhelper (>= 9), lsb-release, mlnx-ofed-kernel-modules, mlxbf-bootimages
+Build-Depends: debhelper (>= 9)
 Standards-Version: 4.2.0
 Maintainer: Vladimir Sokolovsky <vlad@nvidia.com>
 
