@@ -103,13 +103,13 @@ if [ -e /etc/debian_version ]; then
 cat << EOF
 
 DOCA:
-$(for doca in `dpkg --list | grep -E 'doca|rxp' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
+$(for doca in `dpkg --list | grep -E 'doca|rxp|dpacc|flexio|dpa-compiler' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
 EOF
 else
 cat << EOF
 
 DOCA:
-$(for doca in $(rpm -qa | grep -E 'doca|rxp' | sort -n); do echo "- `get_version $doca`";done)
+$(for doca in $(rpm -qa | grep -E 'doca|rxp|dpacc|flexio|dpa-compiler' | sort -n); do echo "- `get_version $doca`";done)
 EOF
 fi
 
