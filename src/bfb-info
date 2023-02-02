@@ -9,12 +9,14 @@ if [ -e "$BOOTIMG_LOCATION" ]; then
 fi
 
 
-OFED=`ofed_info -s | tr -d ':' | cut -d '-' -f2-`
+OFED=`ofed_info -s 2> /dev/null | tr -d ':' | cut -d '-' -f2-`
+if [ ! -n "$OFED" ]; then
+	OFED="in-box"
+fi
+
 BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 BF3_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
-BSP=`dpkg -l | grep -i bootimages | awk '{print $3}'`
-
 
 get_version()
 {
@@ -51,7 +53,7 @@ cat << EOF
 Versions:
 ATF: $BUILD_ATF
 UEFI: $BUILD_UEFI
-BSP: $BSP
+BSP: `get_version mlxbf-bootimages | sed -e 's/mlxbf-bootimages-//'`
 DOCA Base (OFED): ${OFED}
 MFT: `get_version_and_release mft`
 DOCA: `get_version_and_release doca-prime-runtime`
@@ -116,8 +118,10 @@ $(for doca in $(rpm -qa | grep -E 'doca|rxp|dpacc|flexio|dpa-compiler' | sort -n
 EOF
 fi
 
+if [ "$OFED" != "in-box" ]; then
 cat << EOF
 
 OFED:
 `print_ofed`
 EOF
+fi
