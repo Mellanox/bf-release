@@ -25,7 +25,7 @@ BlueField release files and post-installation configuration
 
 %install
 
-OFED_VERSION=`ofed_info -n`
+OFED_VERSION=`ofed_info -n 2> /dev/null || echo inbox`
 BF_KERNEL=`cd /lib/modules;/bin/ls -1d *bluefield | head -1`
 BF_BOOTIMG_VERSION=`rpm -q --queryformat "[%{VERSION}.%{RELEASE}]" mlxbf-bootimages 2> /dev/null`
 DIST_NAME=`lsb_release -is`

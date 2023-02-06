@@ -9,7 +9,7 @@ DIST_NAME := $(shell lsb_release -si)
 DIST_NAME_L := $(shell lsb_release -si | tr A-Z a-z)
 DIST_VERSION := $(shell lsb_release -sr)
 DIST_MAJOR := $(shell lsb_release -sr | cut -d '.' -f 1)
-OFED_VERSION := $(shell ofed_info -n)
+OFED_VERSION := $(shell ofed_info -n 2> /dev/null || echo inbox)
 BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules | grep -o [0-9].*bluefield | head -1)
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
 
