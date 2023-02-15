@@ -219,6 +219,11 @@ if [ -n "$vf_net" ]; then
 	sed -i  -e 's@^PORT_NAME=$1@PORT_NAME=`echo ${1} | sed -e "s/c[[:digit:]]\\+//"`@' /etc/infiniband/vf-net-link-name.sh
 fi
 
+# Post install custom config.toml files to replace the containerd default config file.
+# This is done so that containerd and kubelet can work on the BlueField.
+/bin/rm -f %{buildroot}/etc/containerd/config.toml
+install -m 0644 src/config.toml      %{buildroot}/etc/containerd/config.toml
+
 enable_service()
 {
     service_name=$1
