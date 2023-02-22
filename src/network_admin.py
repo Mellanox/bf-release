@@ -97,6 +97,7 @@ class BFCONFIG:
 
         if self.op in ['ipconfig', 'mtuconfig', 'gwconfig']:
             self.load_network_data()
+            data = self.data['network']
             self.ipv4_prefix = args.ipv4_prefix
             self.ipv6_prefix = args.ipv6_prefix
             self.dhcp4 = False
@@ -104,11 +105,31 @@ class BFCONFIG:
             self.ipv4_addr = None
             self.ipv6_addr = None
     #        self.bootproto = None
+            network_type = 'ethernets'
+            if self.vlan == '-1':
+                network_type = 'ethernets'
+            else:
+                network_type = 'vlans'
+            if self.device in data[network_type]:
+                if 'addresses' in data[network_type][self.device]:
+                    for addr in data[network_type][self.device]['addresses']:
+                        ip, prefix = addr.split('/')
+                        if validIPAddress(ip) == 'IPv4':
+                            self.ipv4_addr, self.ipv4_prefix = ip, prefix
+                        if validIPAddress(ip) == 'IPv6':
+                            self.ipv6_addr, self.ipv6_prefix = ip, prefix
+                if 'dhcp4' in data[network_type][self.device]:
+                    self.ipv4_addr = "dhcp4"
+                if 'dhcp6' in data[network_type][self.device]:
+                    self.ipv6_addr = "dhcp6"
 
             if args.ipv4_addr:
                 if args.ipv4_addr == "dhcp":
                     self.dhcp4 = True
     #                self.bootproto = "dhcp"
+                elif args.ipv4_addr == "0":
+                    self.ipv4_addr = None
+                    self.ipv4_prefix = None
                 else:
                     self.ipv4_addr = args.ipv4_addr
     #                self.bootproto = "static"
@@ -117,6 +138,9 @@ class BFCONFIG:
                 if args.ipv6_addr == "dhcp":
                     self.dhcp6 = True
     #                self.bootproto = "dhcp"
+                elif args.ipv6_addr == "0":
+                    self.ipv6_addr = None
+                    self.ipv6_prefix = None
                 else:
                     self.ipv6_addr = args.ipv6_addr
     #                self.bootproto = "static"
@@ -1046,7 +1070,7 @@ def verify_args(args):
                     msg = "ERROR: Domain name is invalid"
                     rc = 1
 
-    if args.ipv4_addr and args.ipv4_addr != 'dhcp':
+    if args.ipv4_addr and args.ipv4_addr not in ['dhcp', '0']:
         if validIPAddress(args.ipv4_addr) == 'Invalid':
             msg = "ERROR: ipv4_addr is invalid"
             rc = 1
@@ -1054,7 +1078,7 @@ def verify_args(args):
             msg = "ERROR: ipv4_prefix is required"
             rc = 1
 
-    if args.ipv6_addr and args.ipv6_addr != 'dhcp':
+    if args.ipv6_addr and args.ipv6_addr not in ['dhcp', '0']:
         if validIPAddress(args.ipv6_addr) == 'Invalid':
             msg = "ERROR: ipv6_addr is invalid"
             rc = 1
