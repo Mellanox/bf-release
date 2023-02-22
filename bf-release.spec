@@ -143,6 +143,7 @@ install -d %{buildroot}/etc/cni/net.d
 install -d %{buildroot}/var/lib/kubelet
 install -d %{buildroot}/usr/bin
 install -d %{buildroot}/%{_datadir}/%{name}
+install -d %{buildroot}/etc/kubelet.d/
 
 install -m 0644	src/config.toml      %{buildroot}/%{_datadir}/%{name}/config.toml
 install -m 0644	src/10-bf.conf       %{buildroot}/etc/systemd/system/kubelet.service.d/10-bf.conf
@@ -310,6 +311,8 @@ fi
 
 %dir /var/lib/kubelet
 /var/lib/kubelet/config.yaml
+
+%dir /etc/kubelet.d
 
 /usr/bin/bfb-info
 
