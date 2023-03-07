@@ -227,6 +227,9 @@ enable_service()
 {
     service_name=$1
 
+    if ! (systemctl list-unit-files 2>&1 | grep -w ^$service_name); then
+        return
+    fi
     systemctl unmask $service_name || true
     systemctl enable $service_name || true
 }
@@ -235,6 +238,9 @@ disable_service()
 {
     service_name=$1
 
+    if ! (systemctl list-unit-files 2>&1 | grep -w ^$service_name); then
+        return
+    fi
     systemctl disable $service_name || true
 }
 
