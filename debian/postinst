@@ -77,6 +77,12 @@ if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/vf-net-link-name.sh ]; th
 	sed -i  -e 's@^PORT_NAME=$1@PORT_NAME=`echo ${1} | sed -e "s/c[[:digit:]]\\+//"`@' /etc/infiniband/vf-net-link-name.sh
 fi
 
+if [ -d /etc/cloud/cloud.cfg.d ]; then
+	cat > /etc/cloud/cloud.cfg.d/91-dib-cloud-init-datasources.cfg << EOF
+datasource_list: [ ConfigDrive, NoCloud ]
+EOF
+fi
+
 enable_service()
 {
     service_name=$1
