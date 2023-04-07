@@ -110,18 +110,20 @@ class BFCONFIG:
                 network_type = 'ethernets'
             else:
                 network_type = 'vlans'
-            if self.device in data[network_type]:
-                if 'addresses' in data[network_type][self.device]:
-                    for addr in data[network_type][self.device]['addresses']:
-                        ip, prefix = addr.split('/')
-                        if validIPAddress(ip) == 'IPv4':
-                            self.ipv4_addr, self.ipv4_prefix = ip, prefix
-                        if validIPAddress(ip) == 'IPv6':
-                            self.ipv6_addr, self.ipv6_prefix = ip, prefix
-                if 'dhcp4' in data[network_type][self.device]:
-                    self.ipv4_addr = "dhcp4"
-                if 'dhcp6' in data[network_type][self.device]:
-                    self.ipv6_addr = "dhcp6"
+
+            if network_type in data:
+                if self.device in data[network_type]:
+                    if 'addresses' in data[network_type][self.device]:
+                        for addr in data[network_type][self.device]['addresses']:
+                            ip, prefix = addr.split('/')
+                            if validIPAddress(ip) == 'IPv4':
+                                self.ipv4_addr, self.ipv4_prefix = ip, prefix
+                            if validIPAddress(ip) == 'IPv6':
+                                self.ipv6_addr, self.ipv6_prefix = ip, prefix
+                    if 'dhcp4' in data[network_type][self.device]:
+                        self.ipv4_addr = "dhcp4"
+                    if 'dhcp6' in data[network_type][self.device]:
+                        self.ipv6_addr = "dhcp6"
 
             if args.ipv4_addr:
                 if args.ipv4_addr == "dhcp":
@@ -709,20 +711,30 @@ class BFCONFIG:
                 parent_mtu = get_mtu(self.device)
                 if parent_mtu < int(self.mtu):
                     self.result['status'] = 1
-                    self.result['output'] = "ERR: Parent interface MTU should not be less than VLAN's MTU".format(vlan_dev)
+                    self.result['output'] = "ERR: Parent interface MTU should not be less than VLAN's MTU"
                     return 1
 
-            conf_vlans[vlan_dev] = self.set_netplan_dev_data()
+            if not self.vlan_remove:
+                conf_vlans[vlan_dev] = self.set_netplan_dev_data()
+
             # VLAN configuration always includes 'id' and 'link' fields
-            if len(conf_vlans[vlan_dev]) > 2 and not self.vlan_remove:
+            if not self.vlan_remove and len(conf_vlans[vlan_dev]) > 2:
                 self.data['network']['vlans'][vlan_dev] = conf_vlans[vlan_dev]
             else:
+                if "vlans" not in self.data['network']:
+                    self.result['status'] = 1
+                    self.result['output'] = "ERR: VLAN {} does not exist".format(vlan_dev)
+                    return 1
                 if vlan_dev in self.data['network']['vlans']:
                     del self.data['network']['vlans'][vlan_dev]
                     if len(self.data['network']['vlans']) == 0:
                         del self.data['network']['vlans']
                     cmd = "ip link delete link {} name {}".format(dev, vlan_dev)
                     rc, output = get_status_output(cmd, verbose)
+                else:
+                    self.result['status'] = 1
+                    self.result['output'] = "ERR: VLAN {} does not exist".format(vlan_dev)
+                    return 1
 
         try:
             with open(network_config, 'w') as stream:
