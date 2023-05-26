@@ -83,6 +83,10 @@ datasource_list: [ ConfigDrive, NoCloud ]
 EOF
 fi
 
+# Enable NetworkManager for OOB and tmfifo interfaces.
+# Other network interfaces are skipped in /etc/NetworkManager/conf.d/40-mlnx.conf
+sed -i -r -e "s/(managed=).*/\1true/" /etc/NetworkManager/NetworkManager.conf
+
 enable_service()
 {
     service_name=$1
