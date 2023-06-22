@@ -1,3 +1,9 @@
+bf-release (3.9.5-2211-LTS) UNRELEASED; urgency=medium
+
+  * 3.9.5 2211-LTS release
+
+ -- Vladimir Sokolovsky <vlad@nvidia.com>  Wed, 22 Jun 2023 11:39:00 +0000
+
 bf-release (3.9.3-2211-LTS) UNRELEASED; urgency=medium
 
   * 3.9.3 2211-LTS release
