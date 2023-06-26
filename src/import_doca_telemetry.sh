@@ -2,7 +2,7 @@
 
 cd ${0%*/*}
 
-docker_pause=`/bin/ls ../infrastructure/docker_pause*.tar`
+docker_pause=`/bin/ls /opt/mellanox/doca/services/infrastructure/docker_pause*.tar`
 doca_telemetry=`/bin/ls doca_telemetry_service*arm64.tar`
 doca_telemetry_yaml=`/bin/ls doca_telemetry*.yaml`
 
