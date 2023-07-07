@@ -125,6 +125,7 @@ enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 enable_service openvswitch-switch.service
 enable_service watchdog.service
+enable_service kdump.service
 
 disable_service openvswitch-ipsec
 disable_service srp_daemon.service
