@@ -56,10 +56,15 @@ fi
 
 mkdir -p /etc/kubelet.d
 
-if [ ! -e /etc/containerd/config.toml ]; then
-	mkdir -p /etc/containerd
-	cp /usr/share/bf-release/config.toml /etc/containerd
+mkdir -p /etc/containerd
+if [ -e /etc/containerd/config.toml ]; then
+	if [ ! -e /etc/containerd/config.toml.orig ]; then
+		mv /etc/containerd/config.toml /etc/containerd/config.toml.orig
+	else
+		/bin/rm -f /etc/containerd/config.toml
+	fi
 fi
+cp /usr/share/bf-release/config.toml /etc/containerd
 
 # Verify/copy udev rules
 if [ -e /usr/share/doc/mlnx-ofed-kernel-utils/examples/82-net-setup-link.rules ]; then
@@ -125,6 +130,7 @@ enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 enable_service openvswitch-switch.service
 enable_service watchdog.service
+enable_service kdump.service
 
 disable_service openvswitch-ipsec
 disable_service srp_daemon.service
