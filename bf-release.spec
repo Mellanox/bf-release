@@ -1,5 +1,5 @@
 Name: bf-release		
-Version: 4.2.1
+Version: 4.5.0
 Release: 1%{?dist}
 Summary: BF release information	
 
@@ -25,17 +25,16 @@ BlueField release files and post-installation configuration
 
 %install
 
-OFED_VERSION=`ofed_info -n 2> /dev/null || echo inbox`
-BF_KERNEL=`cd /lib/modules;/bin/ls -1d *bluefield | head -1`
-BF_BOOTIMG_VERSION=`rpm -q --queryformat "[%{VERSION}.%{RELEASE}]" mlxbf-bootimages 2> /dev/null`
-DIST_NAME=`lsb_release -is`
 BF_VERSION=""
 if [[ -e /etc/mlnx-release && -s /etc/mlnx-release ]]; then
 	BF_VERSION=`cat /etc/mlnx-release`
 fi
 
 if [ ! -n "$BF_VERSION" ]; then
-	BF_VERSION="DOCA_v1.1_BlueField_OS_${DIST_NAME}_${DIST_VERSION}-${BF_KERNEL}-${OFED_VERSION}-${BF_BOOTIMG_VERSION}-1-aarch64"
+	BF_BOOTIMG_VERSION=$(rpm -q --queryformat "[%{VERSION}.%{RELEASE}]" $(rpm -q --whatprovides mlxbf-bootimages))
+	DOCA_VERSION=$(rpm -q --queryformat "[%{VERSION}]" doca-prime-tools)
+	DIST_NAME=`lsb_release -is`
+	BF_VERSION="DOCA_${DOCA_VERSION}_BSP_${BF_BOOTIMG_VERSION}_${DIST_NAME}_${DIST_VERSION}-$(date +%Y%m%d).prod"
 fi
 
 install -d %{buildroot}/etc
