@@ -116,5 +116,6 @@ chpasswd:
   expire: True
 
 runcmd:
+  - [ /usr/sbin/netfilter-persistent, start ]
   - [ /opt/mellanox/doca/services/telemetry/import_doca_telemetry.sh ]
   - [ /usr/bin/bfrshlog, "INFO: DPU is ready" ]
