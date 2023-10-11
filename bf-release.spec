@@ -252,7 +252,6 @@ disable_service()
 # Enable tmpfs in /tmp
 enable_service tmp.mount
 
-enable_service mlx-regex.service
 enable_service NetworkManager.service
 enable_service NetworkManager-wait-online.service
 enable_service acpid.service
