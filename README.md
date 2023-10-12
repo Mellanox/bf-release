@@ -76,3 +76,8 @@ src/debian-network/enp3s0f0s0
 
 src/debian-network/enp3s0f1s0
 
+# ACPI power button configurations
+
+src/mlnx-powerconf
+
+src/rebootcontrol

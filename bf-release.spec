@@ -11,6 +11,7 @@ Source: %{name}-%{version}.tar.gz
 BuildRequires: redhat-lsb-core
 %endif
 Requires: kexec-tools
+Requires: acpid
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
 Vendor: Nvidia
 %description
@@ -128,6 +129,12 @@ install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
 install -d %{buildroot}/etc/mellanox
 install -m 0644 src/mlnx-bf.conf	%{buildroot}/etc/mellanox
 install -m 0644 src/mlnx-ovs.conf	%{buildroot}/etc/mellanox
+
+install -d %{buildroot}/etc/acpi/actions/
+install -m 0755 src/rebootcontrol	%{buildroot}/etc/acpi/actions/
+
+install -d %{buildroot}/etc/acpi/events/
+install -m 0644 src/mlnx-powerconf	%{buildroot}/etc/acpi/events/
 
 # mlnx-snap
 install -d %{buildroot}/opt/mellanox/mlnx_snap/exec_files
@@ -283,6 +290,12 @@ fi
 %files
 /etc/mlnx-release
 %{_datadir}/%{name}/config.toml
+
+%dir /etc/acpi/events/
+/etc/acpi/events/mlnx-powerconf
+
+%dir /etc/acpi/actions/
+/etc/acpi/actions/rebootcontrol
 
 %dir /opt/mellanox/hlk
 /opt/mellanox/hlk/*
