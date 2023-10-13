@@ -9,4 +9,5 @@ Maintainer: Vladimir Sokolovsky <vlad@nvidia.com>
 Package: bf-release
 Architecture: arm64
 Depends: kexec-tools
+Depends: acpid
 Description: BF release information

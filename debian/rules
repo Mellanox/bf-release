@@ -90,6 +90,11 @@ endif
 	install -m 0644 src/mlnx-bf.conf	debian/$(pname)/etc/mellanox
 	install -m 0644 src/mlnx-ovs.conf	debian/$(pname)/etc/mellanox
 
+	dh_installdirs -p$(pname)  etc/acpi/actions
+	install -m 0755 src/rebootcontrol	debian/$(pname)/etc/acpi/actions
+	dh_installdirs -p$(pname)  etc/acpi/events
+	install -m 0644 src/mlnx-powerconf	debian/$(pname)/etc/acpi/events
+
 	# Cloud-init
 	dh_installdirs -p$(pname)  var/lib/cloud
 	cp -a src/cloud/* debian/$(pname)/var/lib/cloud
