@@ -276,6 +276,7 @@ enable_service kdump.service
 disable_service openvswitch-ipsec
 disable_service ibacm.service
 disable_service opensmd.service
+disable_service strongswan-starter.service
 
 fi
 
