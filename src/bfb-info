@@ -57,7 +57,7 @@ BSP: `get_version mlxbf-bootimages | sed -e 's/mlxbf-bootimages-//'`
 Kernel: $(uname -r)
 DOCA Base (OFED): ${OFED}
 MFT: `get_version_and_release mft`
-DOCA: `get_version_and_release doca-prime-runtime`
+DOCA Prime: `get_version_and_release doca-prime-runtime`
 
 Firmware:
 EOF
