@@ -139,5 +139,6 @@ disable_service ibacm.service
 disable_service opensmd.service
 disable_service unattended-upgrades.service
 disable_service apt-daily-upgrade.timer
+disable_service strongswan-starter.service
 
 #DEBHELPER#
