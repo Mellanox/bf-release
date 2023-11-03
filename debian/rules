@@ -78,6 +78,8 @@ endif
 ifeq ($(DIST_NAME_L), debian)
 	dh_installdirs -p$(pname)  etc/network/interfaces.d
 	install -m 0644 src/debian-network/*	debian/$(pname)/etc/network/interfaces.d
+	dh_installdirs -p$(pname)  etc/initramfs-tools/hooks
+	install -m 0755 src/initramfs-tools_hooks_omit debian/$(pname)/etc/initramfs-tools/hooks/omit
 else
 	dh_installdirs -p$(pname)  etc/netplan
 	install -m 0644 src/ubuntu-network/60-mlnx.yaml		debian/$(pname)/etc/netplan
