@@ -217,6 +217,11 @@ if [ -e /etc/default/networking ]; then
     sed -i -r -e "s/.*WAIT_ONLINE_TIMEOUT.*/WAIT_ONLINE_TIMEOUT=5/" /etc/default/networking
 fi
 
+# Disable kexec
+if [ -e /etc/default/kexec ]; then
+	sed -i -r -e "s/(LOAD_KEXEC=).*/\1false/;s/(USE_GRUB_CONFIG=).*/\1true/" /etc/default/kexec
+fi
+
 # Verify/copy udev rules
 rule82=`/bin/ls -1 /usr/share/doc/mlnx-ofa_kernel*/82-net-setup-link.rules 2> /dev/null`
 if [ -n "$rule82" ]; then

@@ -92,6 +92,11 @@ fi
 # Other network interfaces are skipped in /etc/NetworkManager/conf.d/40-mlnx.conf
 sed -i -r -e "s/(managed=).*/\1true/" /etc/NetworkManager/NetworkManager.conf
 
+# Disable kexec
+if [ -e /etc/default/kexec ]; then
+	sed -i -r -e "s/(LOAD_KEXEC=).*/\1false/;s/(USE_GRUB_CONFIG=).*/\1true/" /etc/default/kexec
+fi
+
 enable_service()
 {
     service_name=$1
