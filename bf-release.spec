@@ -209,6 +209,9 @@ sed -i \
     -e 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/' \
     /etc/default/grub
 
+perl -ni -e 'print unless /GRUB_DISABLE_LINUX_UUID/' /etc/default/grub
+echo "GRUB_DISABLE_LINUX_UUID=false" >> /etc/default/grub
+
 if [ -d /etc/default/grub.d ]; then
     echo "GRUB_DISABLE_OS_PROBER=true" > /etc/default/grub.d/10-disableos-prober.cfg
 fi
