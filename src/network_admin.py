@@ -721,6 +721,10 @@ class BFCONFIG:
             if not self.vlan_remove and len(conf_vlans[vlan_dev]) > 2:
                 self.data['network']['vlans'][vlan_dev] = conf_vlans[vlan_dev]
             else:
+                if "vlans" not in self.data['network']:
+                    self.result['status'] = 1
+                    self.result['output'] = "ERR: VLAN {} does not exist".format(vlan_dev)
+                    return 1
                 if vlan_dev in self.data['network']['vlans']:
                     del self.data['network']['vlans'][vlan_dev]
                     if len(self.data['network']['vlans']) == 0:
