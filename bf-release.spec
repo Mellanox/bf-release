@@ -1,5 +1,5 @@
 Name: bf-release		
-Version: 4.5.0
+Version: 4.6.0
 Release: 1%{?dist}
 Summary: BF release information	
 
