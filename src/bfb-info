@@ -3,9 +3,13 @@
 BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
 
 if [ -e "$BOOTIMG_LOCATION" ]; then
-	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
-	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
-		    cut -d':' -f 2)
+        BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
+        BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
+                    cut -d':' -f 2)
+        if [ -z "$UEFI_VER" ] && [ -x "$(command -v bfver)" ]; then
+                BUILD_UEFI=$(bfver | grep UEFI | awk '{ print $NF }')
+        fi
+
 fi
 
 
