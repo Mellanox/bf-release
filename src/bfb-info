@@ -17,7 +17,8 @@ if [ -e "$BOOTIMG_LOCATION" ]; then
 	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
 	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
                     cut -d':' -f 2)
-	BUILD_BSP=$(`get_version mlxbf-bootimages` | sed -e 's/mlxbf-bootimages-//')
+	BOOTIMAGE_VER=$(get_version mlxbf-bootimages)
+	BUILD_BSP=$(echo "$BOOTIMAGE_VER" | sed -e 's/mlxbf-bootimages-//')
 
 	if [ -x "$(command -v bfver)" ]; then
 		BFVER_VAL=$(bfver)
