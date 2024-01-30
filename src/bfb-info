@@ -2,14 +2,28 @@
 
 BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
 
+get_version()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list $1 | grep -w "$1" | awk '{print $2,$3}'
+	else
+		if (rpm -q --quiet $1); then
+			rpm -q --queryformat="[%{NAME}-%{VERSION}-%{RELEASE}]" $1
+		fi
+	fi
+}
+
 if [ -e "$BOOTIMG_LOCATION" ]; then
 	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
 	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
                     cut -d':' -f 2)
+	BUILD_BSP=$(`get_version mlxbf-bootimages` | sed -e 's/mlxbf-bootimages-//')
+
 	if [ -x "$(command -v bfver)" ]; then
 		BFVER_VAL=$(bfver)
 	fi
-	if [ -z "$UEFI_VER" ] && [ -n "$BFVER_VAL" ]; then
+	if [ -n "$BFVER_VAL" ]; then
+		BUILD_ATF=$(echo "$BFVER_VAL" | grep ATF | awk '{ print $NF }')
                 BUILD_UEFI=$(echo "$BFVER_VAL" | grep UEFI | awk '{ print $NF }')
                 BUILD_BSP=$(echo "$BFVER_VAL" | grep BSP | awk '{ print $NF }' | head -n 1)
         fi
@@ -26,16 +40,6 @@ BF1_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41
 BF2_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 BF3_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 
-get_version()
-{
-	if [ -e /etc/debian_version ]; then
-		dpkg --list $1 | grep -w "$1" | awk '{print $2,$3}'
-	else
-		if (rpm -q --quiet $1); then
-			rpm -q --queryformat="[%{NAME}-%{VERSION}-%{RELEASE}]" $1
-		fi
-	fi
-}
 
 get_version_and_release()
 {
