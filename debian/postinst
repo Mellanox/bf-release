@@ -1,20 +1,5 @@
 #!/bin/bash
 
-if [[ $(lsb_release -si 2>/dev/null) == Debian ]]; then
-    cat << EOF > /etc/default/grub
-GRUB_RECORDFAIL_TIMEOUT=2
-GRUB_DEFAULT=saved
-GRUB_DISABLE_SUBMENU=true
-GRUB_TERMINAL=console
-GRUB_SERIAL_COMMAND="serial --unit=1"
-GRUB_CMDLINE_LINUX="rw"
-GRUB_DISABLE_RECOVERY="true"
-GRUB_TIMEOUT_STYLE=countdown
-GRUB_DISABLE_OS_PROBER=false
-GRUB_DISABLE_LINUX_UUID=false
-EOF
-fi
-
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
     ofed_minor=${ofed_version#*-}
