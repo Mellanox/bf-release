@@ -1,28 +1,25 @@
-apiVersion: kubelet.config.k8s.io/v1beta1 
-kind: KubeletConfiguration 
-# kubelet in standalone 
-authentication: 
- anonymous: 
-  enabled: false 
- webhook: 
-  enabled: false 
-authorization: 
- mode: AlwaysAllow 
-# Define POD CIDR 
-podCIDR: 10.0.0.0/16 
-# static pod for stand-alone mode 
-staticPodPath: /etc/kubelet.d/ 
-cgroupDriver: systemd 
-# DPU management address 
-# address: <DPU IP> 
-# imageMinimumGCAge: 
-# imageGCHighThresholdPercent: 95 
-# imageGCLowThresholdPercent: 80 
-# maxPods: 3 
-# systemReserved: 
-#  cpu: "300m" 
-#  Memory: "300Mi" 
-featureGates:  
- TopologyManager: false 
- CPUManager: false 
- DevicePlugins: false 
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+containerRuntimeEndpoint: unix:///run/containerd/containerd.sock
+# kubelet in standalone
+authentication:
+ anonymous:
+  enabled: false
+ webhook:
+  enabled: false
+authorization:
+ mode: AlwaysAllow
+# Define POD CIDR
+podCIDR: 10.0.0.0/16
+# static pod for stand-alone mode
+staticPodPath: /etc/kubelet.d/
+cgroupDriver: systemd
+# DPU management address
+# address: <DPU IP>
+# imageMinimumGCAge:
+# imageGCHighThresholdPercent: 95
+# imageGCLowThresholdPercent: 80
+# maxPods: 3
+# systemReserved:
+#  cpu: "300m"
+#  Memory: "300Mi"
