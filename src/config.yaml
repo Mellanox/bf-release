@@ -23,7 +23,3 @@ cgroupDriver: systemd
 # systemReserved:
 #  cpu: "300m"
 #  Memory: "300Mi"
-#featureGates:
-# TopologyManager: false
-# CPUManager: false
-# DevicePlugins: false
