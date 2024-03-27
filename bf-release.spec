@@ -33,7 +33,7 @@ fi
 
 if [ ! -n "$BF_VERSION" ]; then
 	BF_BOOTIMG_VERSION=$(rpm -q --queryformat "[%{VERSION}.%{RELEASE}]" $(rpm -q --whatprovides mlxbf-bootimages))
-	DOCA_VERSION=$(rpm -q --queryformat "[%{VERSION}]" doca-prime-tools)
+	DOCA_VERSION=$(rpm -q --queryformat "[%{VERSION}]" doca-prime-runtime)
 	DIST_NAME=`lsb_release -is`
 	BF_VERSION="DOCA_${DOCA_VERSION}_BSP_${BF_BOOTIMG_VERSION}_${DIST_NAME}_${DIST_VERSION}-$(date +%Y%m%d).prod"
 fi
