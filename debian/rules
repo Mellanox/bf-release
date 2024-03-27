@@ -120,6 +120,7 @@ endif
 	install -m 0644	src/config.yaml      debian/$(pname)/var/lib/kubelet/config.yaml
 
 	# ISO post-installation script
+	install -d debian/$(pname)/usr/sbin/
 	install -m 0755 src/iso/bfiso-post-install.sh debian/$(pname)/usr/sbin/bfiso-post-install.sh
 
 	# BFB Info
