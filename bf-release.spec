@@ -8,7 +8,7 @@ Url: https://developer.nvidia.com/networking/doca
 Group: System Environment/Base
 Source: %{name}-%{version}.tar.gz
 %if "%_vendor" == "redhat"
-BuildRequires: redhat-lsb-core
+BuildRequires: lsb_release
 %endif
 Requires: kexec-tools
 Requires: acpid
