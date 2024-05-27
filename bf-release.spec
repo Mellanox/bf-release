@@ -7,8 +7,8 @@ License: GPLv2/BSD
 Url: https://developer.nvidia.com/networking/doca
 Group: System Environment/Base
 Source: %{name}-%{version}.tar.gz
-%if "%_vendor" == "redhat"
-BuildRequires: lsb_release
+%if "%_vendor" == "redhat" && 0%{?rhel} < 9
+BuildRequires: redhat-lsb-core
 %endif
 Requires: kexec-tools
 Requires: acpid
