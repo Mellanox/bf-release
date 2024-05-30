@@ -60,6 +60,7 @@ endif
 	dh_installdirs -p$(pname)  etc/udev/rules.d
 	install -m 0644 src/91-tmfifo_net.rules		debian/$(pname)/etc/udev/rules.d
 	install -m 0644 src/92-oob_net.rules		debian/$(pname)/etc/udev/rules.d
+	install -m 0644 src/80-ifupdown.rules		debian/$(pname)/etc/udev/rules.d
 
 	# System services
 	dh_installdirs -p$(pname)  etc/systemd/system/NetworkManager-wait-online.service.d
