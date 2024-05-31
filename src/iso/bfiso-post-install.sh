@@ -262,20 +262,41 @@ enable_sfc_hbn()
 	ilog "Enable SFC HBN"
 	ARG_PORT0=""
 	ARG_PORT1=""
+	# initial sfc parameters
 	if ! [ -z "${NUM_VFs_PHYS_PORT0}" ]; then
 		ARG_PORT0="--ecpf0 "${NUM_VFs_PHYS_PORT0}
 	fi
 	if ! [ -z "${NUM_VFs_PHYS_PORT1}" ]; then
 		ARG_PORT1="--ecpf1 "${NUM_VFs_PHYS_PORT1}
 	fi
+	# configurable sf/vf mapping
 	HBN_UPLINKS=${HBN_UPLINKS:-"p0,p1"}
 	HBN_REPS=${HBN_REPS:-"pf0hpf,pf1hpf,pf0vf0-pf0vf13"}
 	HBN_DPU_SFS=${HBN_DPU_SFS:-"pf0dpu1,pf0dpu3"}
+	# generic steering bridge mapping
+	if ! [ -z "${BR_HBN_UPLINKS-x}" ]; then
+		BR_HBN_UPLINKS=${BR_HBN_UPLINKS:-"$HBN_UPLINKS"}
+	fi
+	if ! [ -z "${BR_HBN_REPS-x}" ]; then
+		BR_HBN_REPS=${BR_HBN_REPS:-"$HBN_REPS"}
+	fi
+	if ! [ -z "${BR_HBN_SFS-x}" ]; then
+		BR_HBN_SFS=${BR_HBN_SFS:-"$HBN_DPU_SFS"}
+	fi
+	BR_SFC_UPLINKS=${BR_SFC_UPLINKS:-""}
+	BR_SFC_REPS=${BR_SFC_REPS:-""}
+	BR_SFC_SFS=${BR_SFC_SFS:-""}
+	BR_HBN_SFC_PATCH_PORTS=${BR_HBN_SFC_PATCH_PORTS:-""}
+	LINK_PROPAGATION=${LINK_PROPAGATION:-""}
+	ENABLE_BR_SFC=${ENABLE_BR_SFC:-""}
+	ENABLE_BR_SFC_DEFAULT_FLOWS=${ENABLE_BR_SFC_DEFAULT_FLOWS:-""}
+
+        # configurable sf/vf mapping
 	HUGEPAGE_SIZE=${HUGEPAGE_SIZE:-2048}
 	HUGEPAGE_COUNT=${HUGEPAGE_COUNT:-3072}
 	CLOUD_OPTION=${CLOUD_OPTION:-""}
 	log "INFO: Installing SFC HBN environment"
-	ilog "$(HBN_UPLINKS=${HBN_UPLINKS} HBN_REPS=${HBN_REPS} HBN_DPU_SFS=${HBN_DPU_SFS} HUGEPAGE_SIZE=${HUGEPAGE_SIZE} HUGEPAGE_COUNT=${HUGEPAGE_COUNT} CLOUD_OPTION=${CLOUD_OPTION} /opt/mellanox/sfc-hbn/install.sh ${ARG_PORT0} ${ARG_PORT1} 2>&1)"
+	ilog "$(BR_HBN_UPLINKS=${BR_HBN_UPLINKS} BR_HBN_REPS=${BR_HBN_REPS} BR_HBN_SFS=${BR_HBN_SFS} BR_SFC_UPLINKS=${BR_SFC_UPLINKS} BR_SFC_REPS=${BR_SFC_REPS} BR_SFC_SFS=${BR_SFC_SFS} BR_HBN_SFC_PATCH_PORTS=${BR_HBN_SFC_PATCH_PORTS} LINK_PROPAGATION=${LINK_PROPAGATION} ENABLE_BR_SFC=${ENABLE_BR_SFC} ENABLE_BR_SFC_DEFAULT_FLOWS=${ENABLE_BR_SFC_DEFAULT_FLOWS} HUGEPAGE_SIZE=${HUGEPAGE_SIZE} HUGEPAGE_COUNT=${HUGEPAGE_COUNT} CLOUD_OPTION=${CLOUD_OPTION} /opt/mellanox/sfc-hbn/install.sh ${ARG_PORT0} ${ARG_PORT1} 2>&1)"
 	NIC_FW_RESET_REQUIRED=1
 }
 
@@ -547,6 +568,16 @@ EOF
 
 global_installation_flow()
 {
+	update_uefi_boot_entries
+
+	if [ "X$ENABLE_SFC_HBN" == "Xyes" ]; then
+		enable_sfc_hbn
+	fi
+
+	if [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
+		enable_sfc_hbn
+	fi
+	update_efi_bootmgr
 	if function_exists bfb_custom_action1; then
 		log "INFO: Running bfb_custom_action1 from bf.cfg"
 		bfb_custom_action1
