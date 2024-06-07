@@ -95,8 +95,13 @@ endif
 
 	dh_installdirs -p$(pname)  etc/acpi/actions
 	install -m 0755 src/rebootcontrol	debian/$(pname)/etc/acpi/actions
+	install -m 0755 src/bf-upgrade		debian/$(pname)/etc/acpi/actions
 	dh_installdirs -p$(pname)  etc/acpi/events
 	install -m 0644 src/mlnx-powerconf	debian/$(pname)/etc/acpi/events
+	install -m 0644 src/mlnx-lidconf	debian/$(pname)/etc/acpi/events
+
+	dh_installdirs -p$(pname)  etc/systemd/logind.conf.d
+	install -m 0644 src/lid.conf debian/$(pname)/etc/systemd/logind.conf.d
 
 	# Cloud-init
 	dh_installdirs -p$(pname)  var/lib/cloud

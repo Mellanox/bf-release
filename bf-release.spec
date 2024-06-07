@@ -132,9 +132,14 @@ install -m 0644 src/mlnx-ovs.conf	%{buildroot}/etc/mellanox
 
 install -d %{buildroot}/etc/acpi/actions/
 install -m 0755 src/rebootcontrol	%{buildroot}/etc/acpi/actions/
+install -m 0755 src/bf-upgrade		%{buildroot}/etc/acpi/actions/
 
 install -d %{buildroot}/etc/acpi/events/
 install -m 0644 src/mlnx-powerconf	%{buildroot}/etc/acpi/events/
+install -m 0644 src/mlnx-lidconf	%{buildroot}/etc/acpi/events/
+
+install -d %{buildroot}/etc/systemd/logind.conf.d/
+install -m 0644 src/lid.conf		%{buildroot}/etc/systemd/logind.conf.d/
 
 # mlnx-snap
 install -d %{buildroot}/opt/mellanox/mlnx_snap/exec_files
@@ -302,9 +307,14 @@ fi
 
 %dir /etc/acpi/events/
 /etc/acpi/events/mlnx-powerconf
+/etc/acpi/events/mlnx-lidconf
 
 %dir /etc/acpi/actions/
 /etc/acpi/actions/rebootcontrol
+/etc/acpi/actions/bf-upgrade
+
+%dir /etc/systemd/logind.conf.d/
+/etc/systemd/logind.conf.d/lid.conf
 
 %dir /opt/mellanox/hlk
 /opt/mellanox/hlk/*

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# Maximum idle time in seconds to decide no more data from BOOTFIFO.
+IDLE_MAX=5
+
+# Source a configuration if exists.
+[ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
+
+[ ! -e /proc/acpi/button/lid/LID/state ] && exit 0
+
+BOOTFIFO="/sys/bus/platform/devices/MLNXBF04:00/driver/bootfifo"
+if [ ! -e "$BOOTFIFO" ]; then
+  BOOTFIFO="/sys/devices/platform/MLNXBF04:00/bootfifo"
+  [ ! -e "$BOOTFIFO" ] && exit -1
+fi
+
+# Only handles upgrade in closed state.
+state=`cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null`
+[ $state != "closed" ] && exit 0
+
+# Add a delay for the boot-fifo to be filled.
+sleep $IDLE_MAX
+
+# Example code to fetch the upgrade bfb.
+# !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
+UPGRADE_IMAGE=/tmp/upgrade.bfb
+rm -f ${UPGRADE_IMAGE}* 2>/dev/null
+idle_cnt=0
+while [ $idle_cnt -lt $IDLE_MAX ]; do
+  cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
+  filesize=`du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}'`
+  if [ -z "$filesize" -o ."$filesize" == ."0" ]; then
+    # Done if no more data in 5 seconds.
+    idle_cnt=$((idle_cnt + 1))
+    sleep 1
+  else
+    idle_cnt=0
+    cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
+  fi
+done
+
+# Get the upgrade image.
+rm -f ${UPGRADE_IMAGE}.tmp 2>/dev/null
+cd /tmp
+rm -f dump-upgrade-image-v0 2>/dev/null
+mlx-mkbfb -x -n upgrade-image-v0 ${UPGRADE_IMAGE}
+rm -f ${UPGRADE_IMAGE}
+
+# TODO
+# Handle the upgrade-image-v0 (disk image)
+
+bfrshlog "Runtime upgrade finished"
