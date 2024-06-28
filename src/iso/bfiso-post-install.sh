@@ -40,11 +40,74 @@ RC=0
 err_msg=""
 export LC_ALL=C
 
+rlog()
+{
+    msg=$(echo "$*" | sed 's/INFO://;s/ERROR:/ERR/;s/WARNING:/WARN/')
+    if [ -n "$rshimlog" ]; then
+        $rshimlog "$msg"
+    fi
+}
+
+ilog()
+{
+    msg="[$(date +%H:%M:%S)] $*"
+    echo "$msg" >> $LOG
+    echo "$msg" > /dev/ttyAMA0
+    echo "$msg" > /dev/hvc0
+}
+
+log()
+{
+    ilog "$*"
+    rlog "$*"
+}
+
+if [ ! -e /etc/udev/rules.d/92-oob_net.rules ]; then
+	cat > /etc/udev/rules.d/92-oob_net.rules << 'EOF'
+SUBSYSTEM=="net", ACTION=="add", DEVPATH=="/devices/platform/MLNXBF17:00/net/e*", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
+SUBSYSTEM=="net", ACTION=="add", DRIVERS=="virtio_net", PROGRAM="/bin/sh -c 'lspci -vv | grep -wq SimX'", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
+EOF
+fi
+
+modprobe nls_iso8859-1
+modprobe sdhci-of-dwcmshc
+modprobe dw_mmc-bluefield
+modprobe mlxbf_tmfifo
+modprobe gpio_mlxbf3
+modprobe mlxbf_gige
+modprobe -a ipmi_msghandler ipmi_devintf i2c-mlxbf
+modprobe ipmb_host slave_add=0x10
+echo ipmb-host 0x1011 > /sys/bus/i2c/devices/i2c-1/new_device
+modprobe -a mlx5_ib mlxfw ib_umad
+modprobe nvme
+modprobe mlxbf_bootctl
+modprobe sbsa_gwdt
+sleep 5
+
+ilog "Starting mst:"
+ilog "$(mst start)"
+
+#
+# Check PXE installation
+#
+if [ ! -e /tmp/bfpxe.done ]; then touch /tmp/bfpxe.done; bfpxe; fi
+
+
+if [ -e /etc/bf.cfg ]; then
+    log "INFO: Found bf.cfg"
+    if ( bash -n /etc/bf.cfg ); then
+        . /etc/bf.cfg
+    else
+        log "INFO: Invalid bf.cfg"
+    fi
+fi
+
 logfile=${distro}.installation.log
 LOG=/root/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")
 
+ROOTFS=${ROOTFS:-"ext4"}
 cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
 cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
 pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
@@ -67,30 +130,27 @@ if [ "${FACTORY_DEFAULT_DHCP_BEHAVIOR}" == "true" ]; then
 	DHCP_CLASS_ID_DP="NVIDIA/BF/DP"
 fi
 
-rlog()
-{
-	if [ -n "$rshimlog" ]; then
-		$rshimlog "$*"
-	fi
-}
+default_device=/dev/mmcblk0
+if [ -b /dev/nvme0n1 ]; then
+    default_device="/dev/$(cd /sys/block; /bin/ls -1d nvme* | sort -n | tail -1)"
+fi
+device=${device:-"$default_device"}
+BOOT_PARTITION=${device}p1
+ROOT_PARTITION=${device}p2
 
-log()
+save_log()
 {
-	msg="[$(date +%H:%M:%S)] $*"
-	echo "$msg" > /dev/ttyAMA0
-	echo "$msg" > /dev/hvc0
-	if [ -n "$rshimlog" ]; then
-		$rshimlog "$*"
-	fi
-	echo "$msg" >> $LOG
-}
+cat >> $LOG << EOF
 
-ilog()
-{
-	msg="[$(date +%H:%M:%S)] $*"
-	echo "$msg" >> $LOG
-	echo "$msg" > /dev/ttyAMA0
-	echo "$msg" > /dev/hvc0
+########################## DMESG ##########################
+$(dmesg -x)
+EOF
+	sync
+	for pw in $(grep "PASSWORD=" $LOG | cut -d '=' -f 2 | sed 's/["'\'']//'g)
+	do
+		sed -i -e "s,$pw,xxxxxx,g" $LOG
+	done
+	sync
 }
 
 function_exists()
@@ -195,6 +255,25 @@ interface "oob_net0" {
   send vendor-class-identifier "$DHCP_CLASS_ID_OOB";
 }
 EOF
+
+if [[ "X$ENABLE_SFC_HBN" == "Xyes" || "X$ENABLE_BR_HBN" == "Xyes" ]]; then
+	cat >> /etc/dhcp/dhclient.conf << EOF
+
+interface "mgmt" {
+  send vendor-class-identifier "$DHCP_CLASS_ID_OOB";
+}
+EOF
+fi
+
+if [ -e /etc/dhcpcd.conf ]; then
+	if ! (grep -q "^noipv4ll" /etc/dhcpcd.conf); then
+		cat >> /etc/dhcpcd.conf << EOF
+
+# Disable IPv4 Link-Local
+noipv4ll
+EOF
+	fi
+fi
 }
 
 update_efi_bootmgr()
@@ -207,6 +286,7 @@ update_efi_bootmgr()
 	fi
 
 	UBUNTU_CODENAME=$(grep ^ID= /etc/os-release | cut -d '=' -f 2)
+	NEXT_OS_IMAGE=0
 
 	if efibootmgr | grep ${UBUNTU_CODENAME}; then
 		efibootmgr -b "$(efibootmgr | grep ${UBUNTU_CODENAME} | cut -c 5-8)" -B > /dev/null 2>&1
@@ -319,7 +399,7 @@ configure_grub()
 		sed -i -r -e "s/(password_pbkdf2 admin).*/\1 ${grub_admin_PASSWORD}/" /etc/grub.d/40_custom
 	fi
 
-	if (hexdump -C /sys/firmware/acpi/tables/SSDT* | grep -q MLNXBF33); then
+	if (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
 	fi
@@ -339,6 +419,26 @@ configure_grub()
 	ilog "$(/usr/sbin/grub-install ${device})"
 	ilog "$(/usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg)"
 	ilog "$(/usr/sbin/grub-set-default 0)"
+}
+
+set_root_password()
+{
+	if [ -n "${ubuntu_PASSWORD}" ]; then
+		log "INFO: Changing the default password for user ubuntu"
+		perl -ni -e "if(/^users:/../^runcmd/) {
+						next unless m{^runcmd};
+		print q@users:
+  - name: ubuntu
+    lock_passwd: False
+    groups: adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    passwd: $ubuntu_PASSWORD
+@;
+		print } else {print}" /var/lib/cloud/seed/nocloud-net/user-data
+	else
+		perl -ni -e "print unless /plain_text_passwd/" /var/lib/cloud/seed/nocloud-net/user-data
+	fi
 }
 
 update_atf_uefi()
@@ -566,44 +666,6 @@ EOF
 	fi
 }
 
-global_installation_flow()
-{
-	update_uefi_boot_entries
-
-	if [ "X$ENABLE_SFC_HBN" == "Xyes" ]; then
-		enable_sfc_hbn
-	fi
-
-	if [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
-		enable_sfc_hbn
-	fi
-	update_efi_bootmgr
-	if function_exists bfb_custom_action1; then
-		log "INFO: Running bfb_custom_action1 from bf.cfg"
-		bfb_custom_action1
-	fi
-
-	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-		update_atf_uefi
-	fi
-
-	if function_exists bmc_components_update; then
-		bmc_components_update
-	fi
-
-	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-		update_nic_firmware
-	fi
-
-	if function_exists bfb_post_install; then
-		log "INFO: Running bfb_post_install from bf.cfg"
-		bfb_post_install
-	fi
-
-	log "INFO: Installation finished"
-
-	reset_nic_firmware
-}
 BMC_IP=${BMC_IP:-"192.168.240.1"}
 BMC_PORT=${BMC_PORT:-"443"}
 BMC_USER=${BMC_USER:-"root"}
@@ -892,7 +954,7 @@ update_bmc_fw()
 
 	wait_bmc_task_complete
 	if [ "$BMC_REBOOT" != "yes" ]; then
-		log "INFO: BMC firmware was updated. BMC restart is required."
+		log "INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}. BMC restart is required."
 	fi
 }
 
@@ -943,7 +1005,7 @@ update_cec_fw()
 	curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}${uri}
 
 	wait_bmc_task_complete
-	log "INFO: CEC firmware was updated. Host power cycle is required"
+	log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
 }
 
 bmc_reboot()
@@ -1150,4 +1212,110 @@ bmc_components_update()
 	fi
 }
 
+global_installation_flow()
+{
+	if function_exists bfb_pre_install; then
+		log "INFO: Running bfb_pre_install from bf.cfg"
+		bfb_pre_install
+	fi
+
+	configure_target_os
+	configure_dhcp
+	configure_sfs
+	configure_services
+	set_root_password
+	# create_initramfs
+
+	configure_grub
+
+	update_uefi_boot_entries
+
+	if [ "X$ENABLE_SFC_HBN" == "Xyes" ]; then
+		enable_sfc_hbn
+	fi
+
+	if [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
+		enable_sfc_hbn
+	fi
+
+	update_efi_bootmgr
+
+	if function_exists bfb_modify_os; then
+		log "INFO: Running bfb_modify_os from bf.cfg"
+		bfb_modify_os
+	fi
+
+	if function_exists bfb_custom_action1; then
+		log "INFO: Running bfb_custom_action1 from bf.cfg"
+		bfb_custom_action1
+	fi
+
+	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+		update_atf_uefi
+	fi
+
+	if function_exists bmc_components_update; then
+		bmc_components_update
+	fi
+
+	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+		update_nic_firmware
+	fi
+
+	if function_exists bfb_post_install; then
+		log "INFO: Running bfb_post_install from bf.cfg"
+		bfb_post_install
+	fi
+
+	log "INFO: Installation finished"
+
+	reset_nic_firmware
+}
+
+cat >> $LOG << EOF
+
+############ DEBUG INFO (pre-install) ###############
+KERNEL: $(uname -r)
+
+LSMOD:
+$(lsmod)
+
+NETWORK:
+$(ip addr show)
+
+CMDLINE:
+$(cat /proc/cmdline)
+
+PARTED:
+$(parted -l -s)
+
+LSPCI:
+$(lspci)
+
+NIC FW INFO:
+$(flint -d /dev/mst/mt*_pciconf0 q full)
+
+DPU Part Number:
+$dpu_part_number
+
+MLXCONFIG:
+$(mlxconfig -d /dev/mst/mt*_pciconf0 -e q)
+########### DEBUG INFO END ############
+
+EOF
+
+rshlog_path="/sys/devices/platform/MLNXBF04:00/driver/rsh_log"
+if [ ! -e "${rshlog_path}" ]; then
+  rshlog_path="/sys/devices/platform/MLNXBF04:00/rsh_log"
+fi
+
+[ ! -e "${rshlog_path}" ] && log "RSHIM log path doe not exist: $rshlog_path"
+
 global_installation_flow
+
+if [ $RC -eq 0 ]; then
+	rlog "`basename $0` finished successfully"
+else
+	echo "See $LOG"
+	rlog "`basename $0` finished with errors"
+fi
