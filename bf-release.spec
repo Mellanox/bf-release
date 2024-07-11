@@ -12,6 +12,9 @@ BuildRequires: redhat-lsb-core
 %endif
 Requires: kexec-tools
 Requires: acpid
+Requires: grub2-tools
+Requires: NetworkManager
+Requires: mlnx-tools
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
 Vendor: Nvidia
 %description
@@ -194,18 +197,20 @@ if [ -x /usr/bin/mlxconfig ]; then
     sed -i -e "s/mstconfig/mlxconfig/g" /sbin/mlnx_bf_configure /sbin/mlnx-sf
 fi
 
-# Show grub menu and set a timeout
-sed -i 's/.*GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=countdown/' /etc/default/grub
-if ! (grep -q GRUB_TIMEOUT_STYLE /etc/default/grub); then
-	echo "GRUB_TIMEOUT_STYLE=countdown" >> /etc/default/grub
-fi
-perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
-sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
-sed -i -r -e 's/(GRUB_ENABLE_BLSCFG=).*/\1false/' /etc/default/grub
-sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
+if [ -e /etc/default/grub ]; then
+	# Show grub menu and set a timeout
+	sed -i 's/.*GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=countdown/' /etc/default/grub
+	if ! (grep -q GRUB_TIMEOUT_STYLE /etc/default/grub); then
+		echo "GRUB_TIMEOUT_STYLE=countdown" >> /etc/default/grub
+	fi
+	perl -ni -e 'print unless /GRUB_RECORDFAIL_TIMEOUT/' /etc/default/grub
+	sed -i 's/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=2\nGRUB_RECORDFAIL_TIMEOUT=2/' /etc/default/grub
+	sed -i -r -e 's/(GRUB_ENABLE_BLSCFG=).*/\1false/' /etc/default/grub
+	sed -i 's/GRUB_RECORDFAIL_TIMEOUT:-30/GRUB_RECORDFAIL_TIMEOUT:-2/' /etc/grub.d/00_header
 
-# Use console
-sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
+	# Use console
+	sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
+fi
 
 # Linux: use console and set a sensible date on boot (the later is important
 # when resizing the partitions on first boot).
