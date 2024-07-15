@@ -193,7 +193,7 @@ sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
 # Linux: use console and set a sensible date on boot (the later is important
 # when resizing the partitions on first boot).
 sed -i \
-    -e 's/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="console=hvc0 console=ttyAMA0 earlycon=pl011,0x01000000 fixrtc quiet net.ifnames=0 biosdevname=0 iommu.passthrough=1"/' \
+    -e 's/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX="console=hvc0 console=ttyAMA0 earlycon=pl011,0x01000000 fixrtc quiet net.ifnames=0 biosdevname=0 iommu.passthrough=1 cma=0"/' \
     -e 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/' \
     /etc/default/grub
 
