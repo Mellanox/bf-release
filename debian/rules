@@ -46,14 +46,8 @@ override_dh_auto_install:
 	echo "# For more information, refer to http://linux.mellanox.com" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-ifeq ($(DIST_MAJOR), 22)
 	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "# deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-else
-	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/lts/latest/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/lts/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-endif
-
+	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
 
 	# UDEV rules
