@@ -16,6 +16,7 @@ Requires: grub2-tools
 Requires: NetworkManager
 Requires: mlnx-tools
 %if !0%{?oraclelinux}
+Requires: containerd.io
 Requires: mlnx-ofa_kernel
 %endif
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}

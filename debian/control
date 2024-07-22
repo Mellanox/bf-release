@@ -8,5 +8,5 @@ Maintainer: Vladimir Sokolovsky <vlad@nvidia.com>
 
 Package: bf-release
 Architecture: arm64
-Depends: kexec-tools, acpid, network-manager, grub2-common, mlnx-tools
+Depends: kexec-tools, acpid, network-manager, grub2-common, mlnx-tools, containerd.io | containerd
 Description: BF release information
