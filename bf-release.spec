@@ -1,7 +1,7 @@
-Name: bf-release		
+Name: bf-release
 Version: 4.8.0
 Release: 1%{?dist}
-Summary: BF release information	
+Summary: BF release information
 
 License: GPLv2/BSD
 Url: https://developer.nvidia.com/networking/doca
@@ -16,6 +16,7 @@ Requires: grub2-tools
 Requires: NetworkManager
 Requires: mlnx-tools
 %if !0%{?oraclelinux}
+Requires: containerd.io
 Requires: mlnx-ofa_kernel
 %endif
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
@@ -155,7 +156,7 @@ install -m 0755	src/bfb_tool.py      %{buildroot}/opt/mellanox/mlnx_snap/exec_fi
 
 # K8s
 install -d %{buildroot}/etc/containerd
-install -d %{buildroot}/etc/systemd/system/kubelet.service.d
+install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
 install -d %{buildroot}/etc/cni/net.d
 install -d %{buildroot}/var/lib/kubelet
 install -d %{buildroot}/usr/bin
@@ -163,7 +164,7 @@ install -d %{buildroot}/%{_datadir}/%{name}
 install -d %{buildroot}/etc/kubelet.d/
 
 install -m 0644	src/config.toml      %{buildroot}/%{_datadir}/%{name}/config.toml
-install -m 0644	src/10-bf.conf       %{buildroot}/etc/systemd/system/kubelet.service.d/10-bf.conf
+install -m 0644	src/90-kubelet-bluefield.conf %{buildroot}/usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 install -m 0644	src/99-loopback.conf %{buildroot}/etc/cni/net.d/99-loopback.conf
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
@@ -345,8 +346,7 @@ fi
 # %dir /etc/containerd
 # /etc/containerd/config.toml
 
-%dir /etc/systemd/system/kubelet.service.d
-/etc/systemd/system/kubelet.service.d/10-bf.conf
+/usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 
 %dir /etc/cni/net.d
 /etc/cni/net.d/99-loopback.conf
