@@ -46,7 +46,51 @@ rm -f dump-upgrade-image-v0 2>/dev/null
 mlx-mkbfb -x -n upgrade-image-v0 ${UPGRADE_IMAGE}
 rm -f ${UPGRADE_IMAGE}
 
-# TODO
-# Handle the upgrade-image-v0 (disk image)
+if [ ! -e upgrade-image-v0 ]; then
+	bfrshlog "Error: No upgrade image found"
+	exit 1
+fi
+
+case "$(file --brief --mime-type upgrade-image-v0)" in
+	application/gzip)
+		app=gzip
+		;;
+	application/zstd)
+		app=zstd
+		;;
+	*)
+		app=gzip
+		;;
+esac
+
+mkdir image
+cd image
+$app -d < ../upgrade-image-v0 | cpio -id
+
+install_sh=$(/bin/ls -1 */install.sh 2> /dev/null)
+
+if [ -z $install_sh ]; then
+	echo "Error: No installation script found"
+	cd ..
+	/bin/rm -rf image
+	echo "upgrade-image-v0 not supported"
+	exit 1
+fi
+
+mount --bind /dev dev
+mount --bind /sys sys
+mount --bind /proc proc
+
+if [ -e /etc/bf.cfg ]; then
+	cp /etc/bf.cfg etc/
+fi
+
+chroot . /$install_sh
+
+umount /proc
+umount /sys
+umount /dev
 
 bfrshlog "Runtime upgrade finished"
+sleep 3
+reboot -f
