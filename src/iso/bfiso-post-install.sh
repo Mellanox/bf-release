@@ -242,6 +242,7 @@ EOF
 
 	/bin/rm -f /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
 	/bin/rm -f /etc/default/grub.d/50-cloudimg-settings.cfg
+	/bin/rm -f /etc/hostname
 
 } # End of configure_target_os
 
@@ -324,6 +325,8 @@ configure_services()
 	ilog "$(/bin/systemctl enable mlx-openipmi.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable mlx_ipmid.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable set_emu_param.service > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl enable bfvcheck.service > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl enable bfup.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable openvswitch-ipsec > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable srp_daemon.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable ibacm.service > /dev/null 2>&1)"
