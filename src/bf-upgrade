@@ -1,4 +1,26 @@
 #!/bin/bash
+###############################################################################
+#
+# Copyright 2024 NVIDIA Corporation
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
 
 # Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
@@ -6,30 +28,37 @@ IDLE_MAX=5
 # Source a configuration if exists.
 [ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
 
+SCRIPTS_DIR=$(dirname $0)
+
+
 [ ! -e /proc/acpi/button/lid/LID/state ] && exit 0
 
 BOOTFIFO="/sys/bus/platform/devices/MLNXBF04:00/driver/bootfifo"
 if [ ! -e "$BOOTFIFO" ]; then
   BOOTFIFO="/sys/devices/platform/MLNXBF04:00/bootfifo"
-  [ ! -e "$BOOTFIFO" ] && exit -1
+  [ ! -e "$BOOTFIFO" ] && exit 1
 fi
 
+WDIR=${WDIR:-"/tmp/bfb"}
+mkdir -p ${WDIR}
+
 # Only handles upgrade in closed state.
-state=`cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null`
-[ $state != "closed" ] && exit 0
+state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
+[ "$state" != "closed" ] && exit 0
 
 # Add a delay for the boot-fifo to be filled.
 sleep $IDLE_MAX
 
 # Example code to fetch the upgrade bfb.
 # !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
-UPGRADE_IMAGE=/tmp/upgrade.bfb
+UPGRADE_IMAGE=${WDIR}/upgrade.bfb
 rm -f ${UPGRADE_IMAGE}* 2>/dev/null
+
 idle_cnt=0
 while [ $idle_cnt -lt $IDLE_MAX ]; do
   cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
-  filesize=`du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}'`
-  if [ -z "$filesize" -o ."$filesize" == ."0" ]; then
+  filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
+  if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
     # Done if no more data in 5 seconds.
     idle_cnt=$((idle_cnt + 1))
     sleep 1
@@ -39,58 +68,89 @@ while [ $idle_cnt -lt $IDLE_MAX ]; do
   fi
 done
 
-# Get the upgrade image.
-rm -f ${UPGRADE_IMAGE}.tmp 2>/dev/null
-cd /tmp
-rm -f dump-upgrade-image-v0 2>/dev/null
-mlx-mkbfb -x -n upgrade-image-v0 ${UPGRADE_IMAGE}
+/bin/rm -f ${UPGRADE_IMAGE}.tmp
+cd ${WDIR}
+/bin/rm -f dump-*
+
+mlx-mkbfb -x ${UPGRADE_IMAGE}
 rm -f ${UPGRADE_IMAGE}
 
-if [ ! -e upgrade-image-v0 ]; then
-	bfrshlog "Error: No upgrade image found"
-	exit 1
+# dump-boot-args-v0 - bf.cfg
+# dump-capsule-v0 - BSP upgrade capsule
+# dump-image-v0 - BMC firmware image
+# dump-upgrade-image-v0 - CEC upgrade image
+# dump-ramdisk-v0 - NIC firmware Golden Image
+
+if ( bash -n dump-boot-args-v0 ); then
+	bfrshlog "Found bf.cfg"
+	. dump-boot-args-v0
 fi
 
-case "$(file --brief --mime-type upgrade-image-v0)" in
-	application/gzip)
-		app=gzip
-		;;
-	application/zstd)
-		app=zstd
-		;;
-	*)
-		app=gzip
-		;;
-esac
-
-mkdir image
-cd image
-$app -d < ../upgrade-image-v0 | cpio -id
-
-install_sh=$(/bin/ls -1 */install.sh 2> /dev/null)
-
-if [ -z $install_sh ]; then
-	echo "Error: No installation script found"
-	cd ..
-	/bin/rm -rf image
-	echo "upgrade-image-v0 not supported"
-	exit 1
+# Include scripts that provide upgrade infrastructure
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/common 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/common
 fi
 
-mount --bind /dev dev
-mount --bind /sys sys
-mount --bind /proc proc
-
-if [ -e /etc/bf.cfg ]; then
-	cp /etc/bf.cfg etc/
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/atf-uefi 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/atf-uefi
 fi
 
-chroot . /$install_sh
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/nic-fw 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/nic-fw
+fi
 
-umount /proc
-umount /sys
-umount /dev
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/bmc 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/bmc
+fi
 
-bfrshlog "Runtime upgrade finished"
+if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+	if [ -e dump-capsule-v0 ]; then
+		if function_exists update_atf_uefi; then
+			update_atf_uefi $(readlink -f dump-capsule-v0)
+		else
+			log  "ERROR: BSP upgrade function does not exist"
+		fi
+	else
+		log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
+		UPDATE_ATF_UEFI="no"
+	fi
+fi
+
+if [ "$UPDATE_BMC_FW" == "yes" ]; then
+	if [ -e dump-image-v0 ]; then
+		BMC_IMAGE=$(readlink -f dump-image-v0)
+	else
+		log "ERROR: BMC firmware dump-image-v0 was not found"
+		UPDATE_BMC_FW="no"
+	fi
+fi
+
+if [ "$UPDATE_CEC_FW" == "yes" ]; then
+	if [ -e dump-upgrade-image-v0 ]; then
+		CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
+	else
+		log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
+		UPDATE_CEC_FW="no"
+	fi
+fi
+
+if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
+	if [ -e dump-ramdisk-v0 ]; then
+		NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
+	else
+		# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
+		UPDATE_NIC_FW_GOLDEN_IMAGE="no"
+	fi
+fi
+
+if function_exists update_atf_uefi; then
+	bmc_components_update
+else
+	log  "ERROR: BMC upgrade function does not exist"
+fi
+
+cd ${WDIR}
+/bin/rm -f dump-*
+
+log "Runtime upgrade finished"
 sleep 3
-reboot -f

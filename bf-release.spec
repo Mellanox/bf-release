@@ -140,6 +140,7 @@ install -m 0644 src/mlnx-ovs.conf	%{buildroot}/etc/mellanox
 install -d %{buildroot}/etc/acpi/actions/
 install -m 0755 src/rebootcontrol	%{buildroot}/etc/acpi/actions/
 install -m 0755 src/bf-upgrade		%{buildroot}/etc/acpi/actions/
+cp -a src/bf-upgrade.env			%{buildroot}/etc/acpi/actions/
 
 install -d %{buildroot}/etc/acpi/events/
 install -m 0644 src/mlnx-powerconf	%{buildroot}/etc/acpi/events/
@@ -321,6 +322,8 @@ fi
 %dir /etc/acpi/actions/
 /etc/acpi/actions/rebootcontrol
 /etc/acpi/actions/bf-upgrade
+%dir /etc/acpi/actions/bf-upgrade.env
+/etc/acpi/actions/bf-upgrade.env/*
 
 %dir /etc/systemd/logind.conf.d/
 /etc/systemd/logind.conf.d/lid.conf

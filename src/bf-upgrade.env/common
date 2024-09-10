@@ -1,0 +1,52 @@
+rshimlog=$(which bfrshlog 2> /dev/null)
+RC=0
+err_msg=""
+export LC_ALL=C
+
+logfile=pldm.installation.log
+LOG=/var/log/$logfile
+
+fspath=$(readlink -f "$(dirname $0)")
+
+cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
+pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
+dpu_part_number=$(mstflint -d $cx_pcidev q full | grep "Part Number:" | awk '{print $NF}')
+PSID=$(mstflint -d $cx_pcidev q | grep PSID | awk '{print $NF}')
+
+rlog()
+{
+	msg=$(echo "$*" | sed 's/INFO://;s/ERROR:/ERR/;s/WARNING:/WARN/')
+	if [ -n "$rshimlog" ]; then
+		$rshimlog "$msg"
+	fi
+}
+
+ilog()
+{
+	msg="[$(date +%H:%M:%S)] $*"
+	echo "$msg" >> $LOG
+	echo "$msg" > /dev/ttyAMA0
+	echo "$msg" > /dev/hvc0
+}
+
+log()
+{
+	ilog "$*"
+	rlog "$*"
+}
+
+save_log()
+{
+	for pw in $(grep "PASSWORD=" $LOG | cut -d '=' -f 2- | sed 's/["'\'']//'g)
+	do
+		sed -i -e "s,$pw,xxxxxx,g" $LOG
+	done
+	sync
+}
+
+function_exists()
+{
+	declare -f -F "$1" > /dev/null
+	return $?
+}
