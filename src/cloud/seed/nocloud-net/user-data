@@ -1,6 +1,4 @@
 #cloud-config
-debug:
-  verbose: true
 write_files:
   - path: /etc/iptables/rules.v4
     permissions: '0644'
