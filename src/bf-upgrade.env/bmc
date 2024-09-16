@@ -527,7 +527,9 @@ bmc_components_update()
 				bmc_reboot_from_dpu
 			fi
 			ilog "INFO: Running BMC components update flow"
-			create_vlan
+			if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+				create_vlan
+			fi
 			# get_bmc_public_key
 			if [ "$BMC_LINK_UP" == "yes" ]; then
 				if [ ! -z "$NEW_BMC_PASSWORD" ]; then

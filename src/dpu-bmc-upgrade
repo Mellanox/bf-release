@@ -1,0 +1,112 @@
+#!/bin/bash
+###############################################################################
+#
+# Copyright 2024 NVIDIA Corporation
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
+
+# Source a configuration if exists.
+CONFIG=${CONFIG:-"/etc/dpu-bmc-upgrade.conf"}
+[ -f "$CONFIG" ] && source "$CONFIG"
+
+SCRIPTS_DIR="/etc/acpi/actions"
+
+ATF_UEFI_IMAGE=${ATF_UEFI_IMAGE:-"/lib/firmware/mellanox/boot/capsule/boot_update2.cap"}
+NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-"/lib/firmware/mellanox/bmc"}
+DPU_GI_PATH=${DPU_GI_PATH:-"/lib/firmware/mellanox/bmc"}
+BMC_PATH=${BMC_PATH:-"/lib/firmware/mellanox/bmc"}
+CEC_PATH=${CEC_PATH:-"/lib/firmware/mellanox/cec"}
+
+if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
+	BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg)"}
+	CEC_IMAGE=${CEC_IMAGE:-"$(/bin/ls ${CEC_PATH}/*cec-fw.bin)"}
+	NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-"$(/bin/ls ${NIC_FW_GI_PATH}/fw*.bfb)"}
+	DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-"$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb)"}
+elif (lspci -n -d 15b3: | grep -wq 'a2d6'); then
+	BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf2-bmc*.tar)"}
+	CEC_IMAGE=${CEC_IMAGE:-"$(/bin/ls ${CEC_PATH}/*cec-fw.bin)"}
+	NIC_FW_GOLDEN_IMAGE=""
+	DPU_GOLDEN_IMAGE=""
+fi
+
+BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg)"}
+CEC_IMAGE=${CEC_IMAGE:-"$(/bin/ls ${CEC_PATH}/bf3-cec-fw.bin)"}
+NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-"$(/bin/ls ${NIC_FW_GI_PATH}/fw*.bin)"}
+DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-"$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb)"}
+
+# Include scripts that provide upgrade infrastructure
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/common 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/common
+fi
+
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/atf-uefi 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/atf-uefi
+fi
+
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/nic-fw 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/nic-fw
+fi
+
+if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/bmc 2>/dev/null); then
+	. ${SCRIPTS_DIR}/bf-upgrade.env/bmc
+fi
+
+if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+	if [ -e "${ATF_UEFI_IMAGE}" ]; then
+		if function_exists update_atf_uefi; then
+			update_atf_uefi "${ATF_UEFI_IMAGE}"
+		else
+			log  "ERROR: BSP upgrade function does not exist"
+		fi
+	else
+		log "ERROR: BSP upgrade capsule ${ATF_UEFI_IMAGE} was not found"
+		UPDATE_ATF_UEFI="no"
+	fi
+fi
+
+if [ "$UPDATE_BMC_FW" == "yes" ]; then
+	if [ ! -e "${BMC_IMAGE}" ]; then
+		log "ERROR: BMC firmware ${BMC_IMAGE} was not found"
+		UPDATE_BMC_FW="no"
+	fi
+fi
+
+if [ "$UPDATE_CEC_FW" == "yes" ]; then
+	if [ ! -e "${CEC_IMAGE}" ]; then
+		log "ERROR: CEC firmware ${CEC_IMAGE} was not found"
+		UPDATE_CEC_FW="no"
+	fi
+fi
+
+if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
+	if [ ! -e "${NIC_FW_GOLDEN_IMAGE}" ]; then
+		log "ERROR: NIC firmware golden image ${NIC_FW_GOLDEN_IMAGE} was not found"
+		UPDATE_NIC_FW_GOLDEN_IMAGE="no"
+	fi
+fi
+
+if function_exists update_atf_uefi; then
+	bmc_components_update
+else
+	log  "ERROR: BMC upgrade function does not exist"
+fi
+
+log "Runtime upgrade finished"
+sleep 3
