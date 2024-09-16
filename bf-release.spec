@@ -51,10 +51,12 @@ echo ${BF_VERSION} > %{buildroot}/etc/mlnx-release
 # Tools
 install -d %{buildroot}/opt/mellanox/hlk
 install -d %{buildroot}/sbin
+install -d %{buildroot}/%{_sbindir}
 
 install -m 0755	src/mlnx-pre-hlk     %{buildroot}/opt/mellanox/hlk/mlnx-pre-hlk
 install -m 0755	src/mlnx-post-hlk    %{buildroot}/opt/mellanox/hlk/mlnx-post-hlk
 install -m 0755	src/kexec_reboot     %{buildroot}/sbin/kexec_reboot
+install -m 0755	src/dpu-bmc-upgrade  %{buildroot}/%{_sbindir}/dpu-bmc-upgrade
 
 # Sysctl
 install -d %{buildroot}/usr/lib/sysctl.d/
@@ -332,6 +334,7 @@ fi
 /opt/mellanox/hlk/*
 
 /sbin/kexec_reboot
+%{_sbindir}/dpu-bmc-upgrade
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
