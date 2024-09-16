@@ -3,7 +3,7 @@ RC=0
 err_msg=""
 export LC_ALL=C
 
-logfile=pldm.installation.log
+logfile=dpu.installation.log
 LOG=/var/log/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")

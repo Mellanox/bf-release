@@ -123,6 +123,7 @@ endif
 	# ISO post-installation script
 	install -d debian/$(pname)/usr/sbin/
 	install -m 0755 src/iso/bfiso-post-install.sh debian/$(pname)/usr/sbin/bfiso-post-install.sh
+	install -m 0755 src/dpu-bmc-upgrade debian/$(pname)/usr/sbin/dpu-bmc-upgrade
 
 	# BFB Info
 	install -m 0755	src/bfb-info           debian/$(pname)/usr/bin/bfb-info
