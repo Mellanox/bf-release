@@ -101,6 +101,18 @@ if [ -e /etc/default/kexec ]; then
 	sed -i -r -e "s/(LOAD_KEXEC=).*/\1false/;s/(USE_GRUB_CONFIG=).*/\1true/" /etc/default/kexec
 fi
 
+# Update Debian doca.list repo target
+DISTRO=$(lsb_release -si | sed 's/\r//')
+if [[ $DISTRO == *Debian* ]]; then
+	# Check kernel version
+	KERNEL_VER=$(dpkg -L mlnx-ofed-kernel-modules | grep 6.1 | head -n 1)
+	if [[ $KERNEL_VER == *6.1 ]];then
+		sed -i "s/debian12/debian12-6.10/g" /etc/apt/sources.list.d/doca.list
+	else
+		sed -i "s/debian12/debian12-5.15/g" /etc/apt/sources.list.d/doca.list
+	fi
+fi
+
 enable_service()
 {
     service_name=$1
