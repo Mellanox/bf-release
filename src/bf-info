@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
+
+get_version()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list $1 | grep -w "$1" | awk '{print $2,$3}'
+	else
+		if (rpm -q --quiet $1); then
+			rpm -q --queryformat="[%{NAME}-%{VERSION}-%{RELEASE}]" $1
+		fi
+	fi
+}
+
+if [ -e "$BOOTIMG_LOCATION" ]; then
+	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
+	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
+                    cut -d':' -f 2)
+	BOOTIMAGE_VER=$(get_version mlxbf-bootimages)
+	BUILD_BSP=$(echo "$BOOTIMAGE_VER" | sed -e 's/mlxbf-bootimages-//')
+
+	if [ -x "$(command -v bfver)" ]; then
+		BFVER_VAL=$(bfver)
+	fi
+	if [ -n "$BFVER_VAL" ]; then
+		BUILD_ATF=$(echo "$BFVER_VAL" | grep ATF | awk '{ print $NF }' | head -n 1)
+                BUILD_UEFI=$(echo "$BFVER_VAL" | grep UEFI | awk '{ print $NF }' | head -n 1)
+                BUILD_BSP=$(echo "$BFVER_VAL" | grep BSP | awk '{ print $NF }' | head -n 1)
+        fi
+
+fi
+
+
+OFED=`ofed_info -s 2> /dev/null | tr -d ':' | cut -d '-' -f2-`
+if [ ! -n "$OFED" ]; then
+	OFED="in-box"
+fi
+
+DEV_TYPE=$(mlxfwmanager | grep "Device Type:" | awk '{print $3}')
+
+if [ "$DEV_TYPE" == "BlueField" ]; then
+	NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+elif [ "$DEV_TYPE" == "BlueField2" ]; then 
+    NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+elif [ "$DEV_TYPE" == "BlueField3" ]; then
+    NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+fi
+
+
+get_version_and_release()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list $1 | grep -w "$1" | awk '{print $3}'
+	else
+		if (rpm -q --quiet $1); then
+			rpm -q --queryformat="[%{VERSION}-%{RELEASE}]" $1
+		fi
+	fi
+}
+
+print_ofed()
+{
+	if [ -e /etc/debian_version ]; then
+		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | awk '{print $2, $3}'
+	else
+		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | xargs rpm -q --queryformat="[- %{NAME} %{VERSION}-%{RELEASE}]\n"
+	fi
+}
+
+
+cat << EOF
+Versions:
+- ATF: $BUILD_ATF
+- UEFI: $BUILD_UEFI
+- BSP: $BUILD_BSP
+- NIC Firmware: $NIC_FW
+- Kernel: $(uname -r)
+- DOCA Base (OFED): ${OFED}
+- MFT: `get_version_and_release mft`
+- mstflint: `get_version_and_release mstflint`
+- mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
+- mlx-regex: `get_version mlx-regex`
+- collectx-clxapi: `get_version collectx-clxapi`
+- libvma: `get_version libvma`
+EOF
+
+if ( grep -q "DISTRIB_ID=Ubuntu" /etc/lsb-release > /dev/null 2>&1 ); then
+cat << EOF
+- `get_version libxlio`
+- `get_version dpcp`
+EOF
+fi
+
+if [ "$DEV_TYPE" != "BlueField2" ]; then 
+cat << EOF
+
+Storage:
+- `get_version mlnx-libsnap`
+- `get_version spdk`
+- `get_version virtio-net-controller`
+EOF
+else
+cat << EOF
+
+Storage:
+- `get_version mlnx-libsnap`
+- `get_version mlnx-snap`
+- `get_version spdk`
+- `get_version virtio-net-controller`
+EOF
+fi
+
+if [ -e /etc/debian_version ]; then
+
+cat << EOF
+
+DOCA:
+$(for doca in `dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
+EOF
+else
+cat << EOF
+
+DOCA:
+$(for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do echo "- `get_version $doca`";done)
+EOF
+fi
+
+if [ -e /etc/debian_version ]; then
+
+cat << EOF
+
+FlexIO:
+$(for flexio in `dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n`; do echo "- `get_version $flexio`";done)
+EOF
+else
+cat << EOF
+
+FlexIO:
+$(for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do echo "- `get_version $flexio`";done)
+EOF
+fi
+
+
+if [ -e /etc/debian_version ]; then
+
+cat << EOF
+
+SoC Platform:
+$(for package in `dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n`; do echo "- `get_version $package`";done)
+EOF
+else
+cat << EOF
+
+SoC Platform:
+$(for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do echo "- `get_version $package`";done)
+EOF
+fi
+
+if [ "$OFED" != "in-box" ]; then
+cat << EOF
+
+OFED:
+`print_ofed`
+EOF
+fi
+

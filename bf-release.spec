@@ -173,7 +173,7 @@ install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
 
 # BFB Info
-install -m 0755	src/bfb-info           %{buildroot}/usr/bin/bfb-info
+install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
 
 %post
 if [ $1 -eq 1 ]; then
@@ -364,6 +364,6 @@ fi
 
 %dir /etc/kubelet.d
 
-/usr/bin/bfb-info
+/usr/bin/bf-info
 
 %changelog

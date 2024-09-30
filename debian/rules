@@ -126,4 +126,4 @@ endif
 	install -m 0755 src/dpu-bmc-upgrade debian/$(pname)/usr/sbin/dpu-bmc-upgrade
 
 	# BFB Info
-	install -m 0755	src/bfb-info           debian/$(pname)/usr/bin/bfb-info
+	install -m 0755	src/bf-info           debian/$(pname)/usr/bin/bf-info
