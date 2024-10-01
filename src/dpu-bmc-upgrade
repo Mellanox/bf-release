@@ -23,7 +23,7 @@
 ###############################################################################
 
 # Source a configuration if exists.
-CONFIG=${CONFIG:-"/etc/dpu-bmc-upgrade.conf"}
+CONFIG=${CONFIG:-"/etc/bf-upgrade.conf"}
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 case "$1" in
