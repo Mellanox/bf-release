@@ -746,6 +746,16 @@ wait_for_bmc_ip()
 
 create_vlan()
 {
+	if [ "$BMC_LINK_UP" == "yes" ]; then
+		return
+	fi
+
+	if [ "$(get_field_mode)" == "01" ]; then
+		set_field_mode '00'
+		FIELD_MODE_SET=1
+		bmc_reboot_from_dpu
+	fi
+
 	ilog "Creating VLAN 4040"
 	if [ ! -d "/sys/bus/platform/drivers/mlxbf_gige" ]; then
 		ilog "- ERROR: mlxbf_gige driver is not loaded"
@@ -1095,6 +1105,7 @@ bmc_components_update()
 		if [[ -z "$BMC_USER" || -z "$BMC_PASSWORD" ]]; then
 			ilog "BMC_USER and/or BMC_PASSWORD are not defined. Skipping UEFI password change."
 		else
+			create_vlan
 			change_uefi_password
 		fi
 	fi
@@ -1105,11 +1116,6 @@ bmc_components_update()
 			skip_bmc
 			return
 		else
-			if [ "$(get_field_mode)" == "01" ]; then
-				set_field_mode '00'
-				FIELD_MODE_SET=1
-				bmc_reboot_from_dpu
-			fi
 			ilog "INFO: Running BMC components update flow"
 			create_vlan
 			# get_bmc_public_key
