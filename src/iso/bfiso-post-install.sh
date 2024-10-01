@@ -821,7 +821,7 @@ get_bmc_token()
 	return 0
 }
 
-change_uefi_passord()
+change_uefi_password()
 {
 	UEFI_CREDENTIALS="'{\"Attributes\":{\"CurrentUefiPassword\":\"$UEFI_PASSWORD\",\"UefiPassword\":\"${NEW_UEFI_PASSWORD}\"}}'"
 	cmd=$(echo curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -H \"Content-Type: application/json\" -X PATCH https://${BMC_IP}/redfish/v1/Systems/Bluefield/Bios/Settings -d $UEFI_CREDENTIALS)
@@ -838,7 +838,7 @@ change_uefi_passord()
 	return 0
 }
 
-change_bmc_passord()
+change_bmc_password()
 {
 	current_password="$1"
 	new_password="$2"
@@ -1095,7 +1095,7 @@ bmc_components_update()
 		if [[ -z "$BMC_USER" || -z "$BMC_PASSWORD" ]]; then
 			ilog "BMC_USER and/or BMC_PASSWORD are not defined. Skipping UEFI password change."
 		else
-			change_uefi_passord
+			change_uefi_password
 		fi
 	fi
 
@@ -1115,7 +1115,7 @@ bmc_components_update()
 			# get_bmc_public_key
 			if [ "$BMC_LINK_UP" == "yes" ]; then
 				if [ ! -z "$NEW_BMC_PASSWORD" ]; then
-					if change_bmc_passord "$BMC_PASSWORD" "$NEW_BMC_PASSWORD"; then
+					if change_bmc_password "$BMC_PASSWORD" "$NEW_BMC_PASSWORD"; then
 						BMC_PASSWORD="$NEW_BMC_PASSWORD"
 					else
 						skip_bmc
@@ -1123,7 +1123,7 @@ bmc_components_update()
 					fi
 				elif [ "$BMC_PASSWORD" == "$DEFAULT_BMC_PASSWORD" ]; then
 					ilog "BMC password has the default value. Changing to the temporary password."
-					if change_bmc_passord "$BMC_PASSWORD" "$TMP_BMC_PASSWORD"; then
+					if change_bmc_password "$BMC_PASSWORD" "$TMP_BMC_PASSWORD"; then
 						BMC_PASSWORD="$TMP_BMC_PASSWORD"
 					else
 						skip_bmc
