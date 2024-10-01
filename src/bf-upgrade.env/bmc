@@ -70,6 +70,16 @@ wait_for_bmc_ip()
 
 create_vlan()
 {
+	if [ "$BMC_LINK_UP" == "yes" ]; then
+		return
+	fi
+
+	if [ "$(get_field_mode)" == "01" ]; then
+		set_field_mode '00'
+		FIELD_MODE_SET=1
+		bmc_reboot_from_dpu
+	fi
+
 	ilog "Creating VLAN 4040"
 	if [ ! -d "/sys/bus/platform/drivers/mlxbf_gige" ]; then
 		ilog "- ERROR: mlxbf_gige driver is not loaded"
@@ -154,6 +164,7 @@ change_uefi_password()
 {
 	UEFI_CREDENTIALS="'{\"Attributes\":{\"CurrentUefiPassword\":\"$UEFI_PASSWORD\",\"UefiPassword\":\"${NEW_UEFI_PASSWORD}\"}}'"
 	cmd=$(echo curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -H \"Content-Type: application/json\" -X PATCH https://${BMC_IP}/redfish/v1/Systems/Bluefield/Bios/Settings -d $UEFI_CREDENTIALS)
+	ilog "Command: $cmd"
 	output=$(eval $cmd)
 	status=$(echo $output | jq '."@Message.ExtendedInfo"[0].Message')
 	if [ "$status" != "\"The request completed successfully."\" ]; then
@@ -511,6 +522,7 @@ bmc_components_update()
 		if [[ -z "$BMC_USER" || -z "$BMC_PASSWORD" ]]; then
 			ilog "BMC_USER and/or BMC_PASSWORD are not defined. Skipping UEFI password change."
 		else
+			create_vlan
 			change_uefi_password
 		fi
 	fi
@@ -521,11 +533,6 @@ bmc_components_update()
 			skip_bmc
 			return
 		else
-			if [ "$(get_field_mode)" == "01" ]; then
-				set_field_mode '00'
-				FIELD_MODE_SET=1
-				bmc_reboot_from_dpu
-			fi
 			ilog "INFO: Running BMC components update flow"
 			if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
 				create_vlan
