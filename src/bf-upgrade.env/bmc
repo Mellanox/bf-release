@@ -295,7 +295,12 @@ update_bmc_fw()
 	fi
 	ilog "Found BMC firmware image: $image"
 
-	BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+	if [ "$(file --brief --mime-type $image)" == "application/x-tar" ]; then
+		# BlueField-2
+		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
+	else
+		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+	fi
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
 		ilog "- ERROR: Cannot detect included BMC firmware version"
 		RC=$((RC+1))
