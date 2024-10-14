@@ -988,8 +988,9 @@ wait_bmc_task_complete()
 
 update_bmc_fw()
 {
+	wait_bmc_task_complete
 	log "Updating BMC firmware"
-	image=$(/bin/ls -1 {/mnt,/}${BMC_PATH}/${bmc_pref}*bmc* 2> /dev/null | grep -v preboot | tail -1)
+	image=$(/bin/ls -1 {/mnt,/}${BMC_PATH}/${bmc_pref}*bmc*{fwpkg,tar} 2> /dev/null | grep -v preboot | tail -1)
 	if [ -z "$image" ]; then
 		ilog "- ERROR: Cannot find BMC firmware image"
 		RC=$((RC+1))
