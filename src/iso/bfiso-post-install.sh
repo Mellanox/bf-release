@@ -28,7 +28,6 @@ PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/opt/mellanox
 NIC_FW_UPDATE_DONE=0
 FORCE_NIC_FW_UPDATE=${FORCE_NIC_FW_UPDATE:-"no"}
 NIC_FW_RESET_REQUIRED=0
-BFB_NIC_FW_UPDATE=0
 NIC_FW_FOUND=0
 FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
 FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
@@ -484,7 +483,6 @@ provided_nic_fw()
 fw_update()
 {
 	if [[ -x ${FW_UPDATER} && -d ${FW_DIR} ]]; then
-		BFB_NIC_FW_UPDATE=1
 		NIC_FW_FOUND=1
 	fi
 
@@ -519,7 +517,7 @@ fw_update()
 			log "INFO: NIC firmware update failed"
 		else
 			NIC_FW_UPDATE_PASSED=1
-			log "INFO: NIC firmware update done"
+			log "INFO: NIC firmware update done: $(provided_nic_fw)"
 		fi
 		NIC_FW_UPDATE_DONE=1
 	else
