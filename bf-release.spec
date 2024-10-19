@@ -16,7 +16,6 @@ Requires: grub2-tools
 Requires: NetworkManager
 Requires: mlnx-tools
 %if !0%{?oraclelinux}
-Requires: containerd.io
 Requires: mlnx-ofa_kernel
 %endif
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/%{name}-%{version}-root}
@@ -158,15 +157,17 @@ install -m 0755	src/bfb_admin.py     %{buildroot}/opt/mellanox/mlnx_snap/exec_fi
 install -m 0755	src/bfb_tool.py      %{buildroot}/opt/mellanox/mlnx_snap/exec_files/bfb_tool.py
 
 # K8s
-install -d %{buildroot}/etc/containerd
 install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
+install -d %{buildroot}/usr/lib/systemd/system/containerd.service.d
 install -d %{buildroot}/etc/cni/net.d
+install -d %{buildroot}/etc/containerd
 install -d %{buildroot}/var/lib/kubelet
 install -d %{buildroot}/usr/bin
 install -d %{buildroot}/%{_datadir}/%{name}
 install -d %{buildroot}/etc/kubelet.d/
 
-install -m 0644	src/config.toml      %{buildroot}/%{_datadir}/%{name}/config.toml
+install -m 0644 src/config.toml      %{buildroot}/etc/containerd/config-mlnx.toml
+install -m 0644	src/90-containerd-mlnx-config.conf %{buildroot}/usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
 install -m 0644	src/90-kubelet-bluefield.conf %{buildroot}/usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 install -m 0644	src/99-loopback.conf %{buildroot}/etc/cni/net.d/99-loopback.conf
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
@@ -189,14 +190,6 @@ if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     sed -i -r -e "s/(.*then echo) (.*):(.*)/\1 MLNX_OFED_LINUX-${ofed_version}: \3/" /usr/bin/ofed_info
     sed -i -r -e "s/(.*X-n\" ]; then echo) (.*)(; exit.*)/\1 ${ofed_version} \3/" /usr/bin/ofed_info
     sed -i -e "s/OFED-internal/MLNX_OFED_LINUX/g" /usr/bin/ofed_info
-fi
-
-if [ ! -e /etc/containerd/config.toml ]; then
-	mkdir -p /etc/containerd
-	cp %{_datadir}/%{name}/config.toml /etc/containerd
-else
-	mv /etc/containerd/config.toml %{_datadir}/%{name}/config.toml.orig
-	cp %{_datadir}/%{name}/config.toml /etc/containerd/config.toml
 fi
 
 # Use mlxconfig instead of mstconfig to support BF2
@@ -305,17 +298,8 @@ disable_service strongswan-starter.service
 
 fi
 
-%preun
-if [ $1 = 0 ]; then  # 1 : Erase, not upgrade
-	if [ -e %{_datadir}/%{name}/config.toml.orig ]; then
-		/bin/rm -f /etc/containerd/config.toml
-		mv  %{_datadir}/%{name}/config.toml.orig /etc/containerd/config.toml
-	fi
-fi
-
 %files
 /etc/mlnx-release
-%{_datadir}/%{name}/config.toml
 
 %dir /etc/acpi/events/
 /etc/acpi/events/mlnx-powerconf
@@ -349,15 +333,16 @@ fi
 %dir /opt/mellanox/mlnx_snap/exec_files
 /opt/mellanox/mlnx_snap/exec_files/*
 
-# %dir /etc/containerd
-# /etc/containerd/config.toml
-
 /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
+/usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
 
 %dir /etc/cni/net.d
 /etc/cni/net.d/99-loopback.conf
 
 /etc/crictl.yaml
+
+%dir /etc/containerd
+/etc/containerd/config-mlnx.toml
 
 %dir /var/lib/kubelet
 /var/lib/kubelet/config.yaml
