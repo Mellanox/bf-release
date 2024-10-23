@@ -295,16 +295,19 @@ update_bmc_fw()
 	fi
 	ilog "Found BMC firmware image: $image"
 
-	if [ "$(file --brief --mime-type $image)" == "application/x-tar" ]; then
-		# BlueField-2
-		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
-	else
-		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
-	fi
+	BMC_IMAGE_VERSION=$(cat {/mnt,/}${BMC_PATH}/${bmc_pref}-bmc-fw.version 2> /dev/null | head -1)
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
-		ilog "- ERROR: Cannot detect included BMC firmware version"
-		RC=$((RC+1))
-		return
+		if [[ "$image" =~ tar ]]; then
+			# BlueField-2
+			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
+		else
+			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+		fi
+		if [ -z "$BMC_IMAGE_VERSION" ]; then
+			ilog "- ERROR: Cannot detect included BMC firmware version"
+			RC=$((RC+1))
+			return
+		fi
 	fi
 	ilog "Provided BMC firmware version: $BMC_IMAGE_VERSION"
 
@@ -361,7 +364,10 @@ update_cec_fw()
 	fi
 	ilog "Found CEC firmware image: $image"
 
-	CEC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 cec | cut -d '-' -f 2- | sed -e 's/ //g;s/.n02//')"
+	CEC_IMAGE_VERSION=$(cat {/mnt,/}${CEC_PATH}/${bmc_pref}-cec-fw.version 2> /dev/null | head -1)
+	if [ -z "$CEC_IMAGE_VERSION" ]; then
+		CEC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 cec | cut -d '-' -f 2- | sed -e 's/ //g;s/.n02//')"
+	fi
 	if [ -z "$CEC_IMAGE_VERSION" ]; then
 		# BlueField-2 CEC version format
 		CEC_IMAGE_VERSION_HEXA="$(echo $image | grep -o '\-\(.*\)_' | grep -o '\([0-9a-fA-F]\+\).\([0-9a-fA-F]\+\)')"
@@ -395,8 +401,13 @@ update_cec_fw()
 
 	ilog "Proceeding with the CEC firmware update..."
 
+	if [ -z "$BMC_FIRMWARE_URL" ]; then
+		BMC_FIRMWARE_URL=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}/redfish/v1/UpdateService/FirmwareInventory | grep BMC_Firmware | awk '{print $NF}' | tr -d \")
+		ilog "- INFO: BMC_FIRMWARE_URL: $BMC_FIRMWARE_URL"
+	fi
+
 	if [ -z "$BMC_INSTALLED_VERSION" ]; then
-		BMC_INSTALLED_VERSION="$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}${BMC_FIRMWARE_URL} | jq -r ' .Version' | grep -o "\([0-9]\+\).\([0-9]\+\)-\([0-9]\+\)" | tr -s '-' '.')"
+		BMC_INSTALLED_VERSION="$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}${BMC_FIRMWARE_URL} | jq -r ' .Version' | grep -o "\([0-9]\+\).\([0-9]\+\)-\([0-9]\+\)")"
 		if [ -z "$BMC_INSTALLED_VERSION" ]; then
 			ilog "- ERROR: Cannot detect running BMC firmware version"
 			RC=$((RC+1))

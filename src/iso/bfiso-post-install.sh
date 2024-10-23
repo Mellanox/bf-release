@@ -710,15 +710,14 @@ if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
 	fi
 elif (lspci -n -d 15b3: | grep -wq 'a2d6'); then
 	bmc_pref="bf2"
+	# BF2 does not support Golden Images
+	UPDATE_DPU_GOLDEN_IMAGE="no"
+	UPDATE_NIC_FW_GOLDEN_IMAGE="no"
 	if [ -d /BF2BMC ]; then
-	cec_sfx="bin"
-		NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-"/BF2BMC/golden_images/fw"}
-		DPU_GI_PATH=${DPU_GI_PATH:-"/BF2BMC/golden_images/dpu"}
+		cec_sfx="bin"
 		BMC_PATH=${BMC_PATH:-"/BF2BMC/bmc"}
 		CEC_PATH=${CEC_PATH:-"/BF2BMC/cec"}
 	else
-		NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-"/lib/firmware/mellanox/bmc"}
-		DPU_GI_PATH=${DPU_GI_PATH:-"/lib/firmware/mellanox/bmc"}
 		BMC_PATH=${BMC_PATH:-"/lib/firmware/mellanox/bmc"}
 		CEC_PATH=${CEC_PATH:-"/lib/firmware/mellanox/cec"}
 	fi
@@ -996,11 +995,14 @@ update_bmc_fw()
 	fi
 	ilog "Found BMC firmware image: $image"
 
-	if [ "$(file --brief --mime-type $image)" == "application/x-tar" ]; then
-		# BlueField-2
-		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
-	else
-		BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+	BMC_IMAGE_VERSION=$(cat {/mnt,/}${BMC_PATH}/${bmc_pref}-bmc-fw.version 2> /dev/null | head -1)
+	if [ -z "$BMC_IMAGE_VERSION" ]; then
+		if [[ "$image" =~ tar ]]; then
+			# BlueField-2
+			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
+		else
+			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+		fi
 	fi
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
 		ilog "- ERROR: Cannot detect included BMC firmware version"
@@ -1053,7 +1055,7 @@ update_cec_fw()
 {
 	wait_bmc_task_complete
 	log "Updating CEC firmware"
-	image=$(/bin/ls -1 {/mnt,/}${CEC_PATH}/*cec*${cec_sfx} 2> /dev/null | tail -1)
+	image=$(/bin/ls -1 {/mnt,/}${CEC_PATH}/${bmc_pref}*cec*${cec_sfx} 2> /dev/null | tail -1)
 
 	if [ -z "$image" ]; then
 		ilog "- ERROR: Cannot find CEC firmware image"
@@ -1062,7 +1064,10 @@ update_cec_fw()
 	fi
 	ilog "Found CEC firmware image: $image"
 
-	CEC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 cec | cut -d '-' -f 2- | sed -e 's/ //g;s/.n02//')"
+	CEC_IMAGE_VERSION=$(cat {/mnt,/}${CEC_PATH}/${bmc_pref}-cec-fw.version 2> /dev/null | head -1)
+	if [ -z "$CEC_IMAGE_VERSION" ]; then
+		CEC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 cec | cut -d '-' -f 2- | sed -e 's/ //g;s/.n02//')"
+	fi
 	if [ -z "$CEC_IMAGE_VERSION" ]; then
 		# BlueField-2 CEC version format
 		CEC_IMAGE_VERSION_HEXA="$(echo $image | grep -o '\-\(.*\)_' | grep -o '\([0-9a-fA-F]\+\).\([0-9a-fA-F]\+\)')"
@@ -1096,8 +1101,13 @@ update_cec_fw()
 
 	ilog "Proceeding with the CEC firmware update..."
 
+	if [ -z "$BMC_FIRMWARE_URL" ]; then
+		BMC_FIRMWARE_URL=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}/redfish/v1/UpdateService/FirmwareInventory | grep BMC_Firmware | awk '{print $NF}' | tr -d \")
+		ilog "- INFO: BMC_FIRMWARE_URL: $BMC_FIRMWARE_URL"
+	fi
+
 	if [ -z "$BMC_INSTALLED_VERSION" ]; then
-		BMC_INSTALLED_VERSION="$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}${BMC_FIRMWARE_URL} | jq -r ' .Version' | grep -o "\([0-9]\+\).\([0-9]\+\)-\([0-9]\+\)" | tr -s '-' '.')"
+		BMC_INSTALLED_VERSION="$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET https://${BMC_IP}${BMC_FIRMWARE_URL} | jq -r ' .Version' | grep -o "\([0-9]\+\).\([0-9]\+\)-\([0-9]\+\)")"
 		if [ -z "$BMC_INSTALLED_VERSION" ]; then
 			ilog "- ERROR: Cannot detect running BMC firmware version"
 			RC=$((RC+1))
@@ -1151,7 +1161,7 @@ bmc_reboot_from_dpu()
 update_dpu_golden_image()
 {
 	log "Updating DPU Golden Image"
-	image=$(/bin/ls -1 {/mnt,/}${DPU_GI_PATH}/*preboot-install.bfb 2> /dev/null | tail -1)
+	image=$(/bin/ls -1 {/mnt,/}${DPU_GI_PATH}/${bmc_pref}*preboot-install.bfb 2> /dev/null | tail -1)
 
 	if [ -z "$image" ]; then
 		ilog "DPU golden image was not found"
