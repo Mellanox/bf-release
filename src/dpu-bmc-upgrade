@@ -47,8 +47,28 @@ DPU_GI_PATH=${DPU_GI_PATH:-"/lib/firmware/mellanox/bmc"}
 BMC_PATH=${BMC_PATH:-"/lib/firmware/mellanox/bmc"}
 CEC_PATH=${CEC_PATH:-"/lib/firmware/mellanox/cec"}
 
-cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
-dpu_part_number=$(mstflint -d $cx_pcidev q full | grep "Part Number:" | awk '{print $NF}')
+export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+export flint_dev=$cx_pcidev
+export FLINT=mstflint
+if [ ! -x /usr/bin/mstflint ]; then
+	FLINT=flint
+fi
+
+is_SecureBoot=0
+if (mokutil --sb-state 2>&1 | grep -q "SecureBoot enabled"); then
+        is_SecureBoot=1
+fi
+
+if [ $is_SecureBoot -eq 1 ]; then
+        mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+        if [ ! -n "${mst_dev}" ]; then
+                mst start > /dev/null 2>&1
+        fi
+		flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+		FLINT=flint
+fi
+
+export dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
 
 if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
 	BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)"}

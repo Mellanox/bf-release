@@ -10,7 +10,7 @@ CHROOT=
 
 running_nic_fw()
 {
-	mstflint -d $cx_pcidev q 2>&1 | grep -w 'FW Version:' | awk '{print $NF}'
+	$FLINT -d $flint_dev q 2>&1 | grep -w 'FW Version:' | awk '{print $NF}'
 }
 
 provided_nic_fw()

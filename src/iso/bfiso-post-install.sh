@@ -107,11 +107,35 @@ LOG=/root/$logfile
 fspath=$(readlink -f "$(dirname $0)")
 
 ROOTFS=${ROOTFS:-"ext4"}
-cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+
+export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+export flint_dev=$cx_pcidev
+
+export FLINT=mstflint
+if [ ! -x /usr/bin/mstflint ]; then
+	FLINT=flint
+fi
+
+is_SecureBoot=0
+if (mokutil --sb-state 2>&1 | grep -q "SecureBoot enabled"); then
+        is_SecureBoot=1
+fi
+
+if [ $is_SecureBoot -eq 1 ]; then
+        mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+        if [ ! -n "${mst_dev}" ]; then
+                mst start > /dev/null 2>&1
+        fi
+        flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+        FLINT=flint
+fi
+
+export dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
+
 cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
 pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
-dpu_part_number=$(flint -d $cx_pcidev q full | grep "Part Number:" | awk '{print $NF}')
-PSID=$(mstflint -d $cx_pcidev q | grep PSID | awk '{print $NF}')
+dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
+PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
 
 UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
 UPDATE_DPU_OS=${UPDATE_DPU_OS:-"yes"}
@@ -193,30 +217,28 @@ configure_target_os()
 	if [ -e /usr/sbin/mlnx_snap_check_emulation.sh ]; then
 		sed -r -i -e "s@(NVME_SF_ECPF_DEV=).*@\1${pciid}@" /usr/sbin/mlnx_snap_check_emulation.sh
 	fi
-	if [ -n "$FLINT" ]; then
-		PSID=$($FLINT -d $pciid q | grep PSID | awk '{print $NF}')
 
-		case "${PSID}" in
-			MT_0000000634)
-			sed -r -i -e 's@(EXTRA_ARGS=).*@\1"--mem-size 1200"@' /etc/default/mlnx_snap
-			;;
-			MT_0000000667|MT_0000000698)
-			/bin/systemctl disable lldpad.service
-			/bin/systemctl disable lldpad.socket
-			perl -ni -e "print unless /controller_nvme_namespace_attach/" /etc/mlnx_snap/snap_rpc_init_bf2.conf
-			sed -r -i -e "s@(controller_nvme_create.*)@\1 -c /etc/mlnx_snap/mlnx_snap.json.example@" /etc/mlnx_snap/snap_rpc_init_bf2.conf
-			sed -r -i -e 's@(CPU_MASK=).*@\10xff@' \
-				      -e 's@.*RDMAV_FORK_SAFE=.*@RDMAV_FORK_SAFE=1@' \
-				      -e 's@.*RDMAV_HUGEPAGES_SAFE=.*@RDMAV_HUGEPAGES_SAFE=1@' \
-					  -e 's@.*NVME_FW_SUPP=.*@NVME_FW_SUPP=1@' \
-					  -e 's@.*NVME_FW_UPDATE_PERSISTENT_LOCATION=.*@NVME_FW_UPDATE_PERSISTENT_LOCATION=/common@' \
-					  /etc/default/mlnx_snap
-			perl -ni -e "print unless /rpc_server/" /etc/mlnx_snap/mlnx_snap.json.example
-			sed -i -e '/"ctrl": {/a\'$'\n''        "rpc_server": "/var/tmp/spdk.sock",' /etc/mlnx_snap/mlnx_snap.json.example
-			sed -r -i -e 's@("max_namespaces":).*([a-zA-Z0-9]+)@\1 30@' \
-					  -e 's@("quirks":).*([a-zA-Z0-9]+)@\1 0x8@' \
-					  /etc/mlnx_snap/mlnx_snap.json.example
-			sed -i -e "s/bdev_nvme_set_options.*/bdev_nvme_set_options --bdev-retry-count 10 --transport-retry-count 7 --transport-ack-timeout 0 --timeout-us 0 --timeout-admin-us 0 --action-on-timeout none --reconnect-delay-sec 10 --ctrlr-loss-timeout-sec -1 --fast-io-fail-timeout-sec 0/" /etc/mlnx_snap/spdk_rpc_init.conf
+	case "${PSID}" in
+		MT_0000000634)
+		sed -r -i -e 's@(EXTRA_ARGS=).*@\1"--mem-size 1200"@' /etc/default/mlnx_snap
+		;;
+		MT_0000000667|MT_0000000698)
+		/bin/systemctl disable lldpad.service
+		/bin/systemctl disable lldpad.socket
+		perl -ni -e "print unless /controller_nvme_namespace_attach/" /etc/mlnx_snap/snap_rpc_init_bf2.conf
+		sed -r -i -e "s@(controller_nvme_create.*)@\1 -c /etc/mlnx_snap/mlnx_snap.json.example@" /etc/mlnx_snap/snap_rpc_init_bf2.conf
+		sed -r -i -e 's@(CPU_MASK=).*@\10xff@' \
+			      -e 's@.*RDMAV_FORK_SAFE=.*@RDMAV_FORK_SAFE=1@' \
+			      -e 's@.*RDMAV_HUGEPAGES_SAFE=.*@RDMAV_HUGEPAGES_SAFE=1@' \
+				  -e 's@.*NVME_FW_SUPP=.*@NVME_FW_SUPP=1@' \
+				  -e 's@.*NVME_FW_UPDATE_PERSISTENT_LOCATION=.*@NVME_FW_UPDATE_PERSISTENT_LOCATION=/common@' \
+				  /etc/default/mlnx_snap
+		perl -ni -e "print unless /rpc_server/" /etc/mlnx_snap/mlnx_snap.json.example
+		sed -i -e '/"ctrl": {/a\'$'\n''        "rpc_server": "/var/tmp/spdk.sock",' /etc/mlnx_snap/mlnx_snap.json.example
+		sed -r -i -e 's@("max_namespaces":).*([a-zA-Z0-9]+)@\1 30@' \
+				  -e 's@("quirks":).*([a-zA-Z0-9]+)@\1 0x8@' \
+				  /etc/mlnx_snap/mlnx_snap.json.example
+		sed -i -e "s/bdev_nvme_set_options.*/bdev_nvme_set_options --bdev-retry-count 10 --transport-retry-count 7 --transport-ack-timeout 0 --timeout-us 0 --timeout-admin-us 0 --action-on-timeout none --reconnect-delay-sec 10 --ctrlr-loss-timeout-sec -1 --fast-io-fail-timeout-sec 0/" /etc/mlnx_snap/spdk_rpc_init.conf
 
 	cat >> /lib/udev/mlnx_bf_udev << EOF
 
@@ -229,10 +251,9 @@ case "\$1" in
         ;;
 esac
 EOF
-			sed -i -e "s/dns=default/dns=none/" /etc/NetworkManager/conf.d/45-mlnx-dns.conf
-			;;
-		esac
-	fi
+		sed -i -e "s/dns=default/dns=none/" /etc/NetworkManager/conf.d/45-mlnx-dns.conf
+		;;
+	esac
 
 	sed -i -r -e "s/^(MACAddressPolicy.*)/# \1/" /usr/lib/systemd/network/99-default.link
 
@@ -472,7 +493,7 @@ update_atf_uefi()
 
 running_nic_fw()
 {
-	mstflint -d $cx_pcidev q 2>&1 | grep -w 'FW Version:' | awk '{print $NF}'
+	$FLINT -d $flint_dev q 2>&1 | grep -w 'FW Version:' | awk '{print $NF}'
 }
 
 provided_nic_fw()
