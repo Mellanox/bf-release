@@ -552,6 +552,8 @@ bmc_components_update()
 			ilog "INFO: Running BMC components update flow"
 			if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
 				create_vlan
+			else
+				BMC_LINK_UP="yes"
 			fi
 			# get_bmc_public_key
 			if [ "$BMC_LINK_UP" == "yes" ]; then
