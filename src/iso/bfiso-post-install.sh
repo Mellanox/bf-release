@@ -144,13 +144,19 @@ NIC_FW_UPDATE_PASSED=0
 DHCP_CLASS_ID=${PXE_DHCP_CLASS_ID:-""}
 DHCP_CLASS_ID_OOB=${DHCP_CLASS_ID_OOB:-"NVIDIA/BF/OOB"}
 DHCP_CLASS_ID_DP=${DHCP_CLASS_ID_DP:-"NVIDIA/BF/DP"}
+# 00:00:16:47 represents the IANA-assigned Enterprise Number for NVIDIA (5703 in decimal) NVIDIA/BF/OOB
+DHCP_CLASS_ID_OOB_IPV6=${DHCP_CLASS_ID_OOB_IPV6:-"00:00:16:47:00:0d:4E:56:49:44:49:41:2F:42:46:2F:4F:4F:42"}
+# 00:00:16:47 represents the IANA-assigned Enterprise Number for NVIDIA (5703 in decimal) NVIDIA/BF/DP
+DHCP_CLASS_ID_DP_IPV6=${DHCP_CLASS_ID_DP_IPV6:-"00:00:16:47:00:0c:4E:56:49:44:49:41:2f:42:46:2f:44:50"}
 FACTORY_DEFAULT_DHCP_BEHAVIOR=${FACTORY_DEFAULT_DHCP_BEHAVIOR:-"true"}
 
 if [ "${FACTORY_DEFAULT_DHCP_BEHAVIOR}" == "true" ]; then
-	# Set factory defaults
-	DHCP_CLASS_ID="NVIDIA/BF/PXE"
-	DHCP_CLASS_ID_OOB="NVIDIA/BF/OOB"
-	DHCP_CLASS_ID_DP="NVIDIA/BF/DP"
+    # Set factory defaults
+    DHCP_CLASS_ID="NVIDIA/BF/PXE"
+    DHCP_CLASS_ID_OOB="NVIDIA/BF/OOB"
+    DHCP_CLASS_ID_DP="NVIDIA/BF/DP"
+    DHCP_CLASS_ID_OOB_IPV6="00:00:16:47:00:0d:4E:56:49:44:49:41:2F:42:46:2F:4F:4F:42"
+    DHCP_CLASS_ID_DP_IPV6="00:00:16:47:00:0c:4E:56:49:44:49:41:2f:42:46:2f:44:50"
 fi
 
 default_device=/dev/mmcblk0
@@ -277,11 +283,25 @@ interface "oob_net0" {
 }
 EOF
 
+    cat >> /etc/dhcp/dhclient6.conf << EOF
+option dhcp6.vendor-opts code 16 = string;
+send dhcp6.vendor-opts $DHCP_CLASS_ID_DP_IPV6;
+
+interface "oob_net0" {
+  send dhcp6.vendor-opts $DHCP_CLASS_ID_OOB_IPV6;
+}
+EOF
+
 if [[ "X$ENABLE_SFC_HBN" == "Xyes" || "X$ENABLE_BR_HBN" == "Xyes" ]]; then
-	cat >> /etc/dhcp/dhclient.conf << EOF
+    cat >> /etc/dhcp/dhclient.conf << EOF
 
 interface "mgmt" {
   send vendor-class-identifier "$DHCP_CLASS_ID_OOB";
+}
+EOF
+    cat >> /etc/dhcp/dhclient6.conf << EOF
+interface "mgmt" {
+  send dhcp6.vendor-opts $DHCP_CLASS_ID_OOB_IPV6;
 }
 EOF
 fi
