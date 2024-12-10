@@ -110,12 +110,16 @@ endif
 
 	# K8s
 	dh_installdirs -p$(pname)  usr/lib/systemd/system/kubelet.service.d/
+	dh_installdirs -p$(pname)  usr/lib/systemd/system/containerd.service.d/
 	dh_installdirs -p$(pname)  etc/cni/net.d
+	dh_installdirs -p$(pname)  etc/containerd
 	dh_installdirs -p$(pname)  var/lib/kubelet
 	dh_installdirs -p$(pname)  usr/bin
 	dh_installdirs -p$(pname)  usr/share/$(pname)
-	install -m 0644	src/config.toml      debian/$(pname)/usr/share/$(pname)/config.toml
-	install -m 0644	src/90-kubelet-bluefield.conf       debian/$(pname)/usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
+
+	install -m 0644 src/config.toml      debian/$(pname)/etc/containerd/config-mlnx.toml
+	install -m 0644	src/90-containerd-mlnx-config.conf debian/$(pname)/usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
+	install -m 0644	src/90-kubelet-bluefield.conf      debian/$(pname)/usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 	install -m 0644	src/99-loopback.conf debian/$(pname)/etc/cni/net.d/99-loopback.conf
 	install -m 0644	src/crictl.yaml      debian/$(pname)/etc/crictl.yaml
 	install -m 0644	src/config.yaml      debian/$(pname)/var/lib/kubelet/config.yaml
