@@ -83,7 +83,7 @@ ifeq ($(DIST_NAME_L), debian)
 	install -m 0755 src/initramfs-tools_hooks_omit debian/$(pname)/etc/initramfs-tools/hooks/omit
 else
 	dh_installdirs -p$(pname)  etc/netplan
-	install -m 0644 src/ubuntu-network/60-mlnx.yaml		debian/$(pname)/etc/netplan
+	install -m 0600 src/ubuntu-network/60-mlnx.yaml		debian/$(pname)/etc/netplan
 endif
 	dh_installdirs -p$(pname)  etc/NetworkManager/conf.d
 	install -m 0644 src/40-mlnx.conf		debian/$(pname)/etc/NetworkManager/conf.d/
@@ -122,3 +122,7 @@ endif
 
 	# BFB Info
 	install -m 0755	src/bfb-info           debian/$(pname)/usr/bin/bfb-info
+
+override_dh_fixperms:
+	dh_fixperms
+	chmod 600 debian/$(pname)/etc/netplan/60-mlnx.yaml
