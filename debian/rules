@@ -131,3 +131,7 @@ endif
 
 	# BFB Info
 	install -m 0755	src/bf-info           debian/$(pname)/usr/bin/bf-info
+
+override_dh_fixperms:
+	dh_fixperms
+	chmod 600 debian/$(pname)/etc/netplan/60-mlnx.yaml
