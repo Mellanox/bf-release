@@ -44,7 +44,7 @@ __version__ = "1.0"
 prog = "bfb_tool"
 os.environ['PATH'] = '/usr/sbin:/usr/bin:/sbin:/bin'
 
-SUPPORTED_OPERATIONS=["fw_get_bfb_info", "fw_activate_bfb", "fw_get_caps"]
+SUPPORTED_OPERATIONS=["fw_get_bfb_info", "fw_activate_bfb", "fw_get_caps", "fw_recover"]
 verbose = 0
 
 def version():
@@ -108,11 +108,14 @@ def main():
     if args.op == 'fw_get_bfb_info':
         ret = json.loads(bfb_admin.fw_get_bfb_info(args.bfb))
 
-    if args.op == 'fw_activate_bfb':
+    elif args.op == 'fw_activate_bfb':
         ret = json.loads(bfb_admin.fw_activate_bfb(args.bfb, args.now))
 
-    if args.op == 'fw_get_caps':
+    elif args.op == 'fw_get_caps':
         ret = json.loads(bfb_admin.fw_get_caps())
+
+    elif args.op == 'fw_recover':
+        ret = json.loads(bfb_admin.fw_recover())
 
     if ret["success"] == False:
         rc = 1

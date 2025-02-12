@@ -1,0 +1,21 @@
+UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
+
+update_atf_uefi()
+{
+	if function_exists pre_update_atf_uefi; then
+		log "INFO: Running pre_update_atf_uefi from bf.cfg"
+		pre_update_atf_uefi
+	fi
+
+	if [ ! -d /sys/firmware/efi/efivars ]; then
+		mount -t efivarfs none /sys/firmware/efi/efivars
+	fi
+
+	ilog "Updating ATF/UEFI:"
+	ilog "$(bfrec --capsule $1 2>&1)"
+
+	if function_exists post_update_atf_uefi; then
+		log "INFO: Running post_update_atf_uefi from bf.cfg"
+		post_update_atf_uefi
+	fi
+}

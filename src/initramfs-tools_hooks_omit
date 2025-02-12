@@ -1,0 +1,22 @@
+#!/bin/sh
+
+PREREQ=""
+prereqs()
+{
+   echo "$PREREQ"
+}
+
+case $1 in
+prereqs)
+   prereqs
+   exit 0
+   ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+# Begin real processing below this line
+
+OMIT_DRIVERS="mlx4_ib.ko mlx5_core.ko mlx5_ib.ko mlxdevm.ko mlxfw.ko ib_umad.ko"
+for i in ${OMIT_DRIVERS}; do
+   find ${DESTDIR} -name ${i} -delete
+done
