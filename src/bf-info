@@ -47,6 +47,7 @@ elif [ "$DEV_TYPE" == "BlueField3" ]; then
     NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
 fi
 
+MLX_REGEX=$(get_version mlx-regex 2> /dev/null)
 
 get_version_and_release()
 {
@@ -68,19 +69,44 @@ print_ofed()
 	fi
 }
 
+get_bmc_fw()
+{
+	if [ -e /lib/firmware/mellanox/bmc/bf2-bmc-fw.version ]; then
+		cat /lib/firmware/mellanox/bmc/bf2-bmc-fw.version
+	elif [ -e /lib/firmware/mellanox/bmc/bf3-bmc-fw.version ]; then
+		cat /lib/firmware/mellanox/bmc/bf3-bmc-fw.version
+	fi
+}
+
+get_cec_fw()
+{
+	if [ -e /lib/firmware/mellanox/cec/bf2-cec-fw.version ]; then
+		cat /lib/firmware/mellanox/cec/bf2-cec-fw.version
+	elif [ -e /lib/firmware/mellanox/cec/bf3-cec-fw.version ]; then
+		cat /lib/firmware/mellanox/cec/bf3-cec-fw.version
+	fi
+}
 
 cat << EOF
-Versions:
+Firmware:
 - ATF: $BUILD_ATF
 - UEFI: $BUILD_UEFI
-- BSP: $BUILD_BSP
 - NIC Firmware: $NIC_FW
-- Kernel: $(uname -r)
+- BMC Firmware: `get_bmc_fw`
+- CEC Firmware: `get_cec_fw`
+
+Versions:
 - DOCA Base (OFED): ${OFED}
+- BSP: $BUILD_BSP
+- mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
+- Kernel: $(uname -r)
 - MFT: `get_version_and_release mft`
 - mstflint: `get_version_and_release mstflint`
-- mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
-- mlx-regex: `get_version mlx-regex`
+EOF
+if [ -n "$MLX_REGEX" ]; then
+    echo "- mlx-regex: ${MLX_REGEX}"
+fi
+cat << EOF
 - collectx-clxapi: `get_version collectx-clxapi`
 - libvma: `get_version libvma`
 EOF
