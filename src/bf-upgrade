@@ -80,6 +80,7 @@ rm -f ${UPGRADE_IMAGE}
 # dump-image-v0 - BMC firmware image
 # dump-upgrade-image-v0 - CEC upgrade image
 # dump-ramdisk-v0 - NIC firmware Golden Image
+# dump-nicfw-v0 - NIC firmware
 
 if ( bash -n dump-boot-args-v0 ); then
 	bfrshlog "Found bf.cfg"
@@ -147,6 +148,20 @@ if function_exists update_atf_uefi; then
 	bmc_components_update
 else
 	log  "ERROR: BMC upgrade function does not exist"
+fi
+
+if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+	if [ -e dump-nicfw-v0 ]; then
+		if function_exists update_nic_firmware; then
+			NIC_FW_BIN=$(readlink -f dump-nicfw-v0)
+			update_nic_firmware
+		else
+			log  "ERROR: NIC Firmware upgrade function does not exist"
+		fi
+	else
+		# log "ERROR: NIC firmware binary dump-nicfw-v0 was not found"
+		WITH_NIC_FW_UPDATE="no"
+	fi
 fi
 
 cd ${WDIR}
