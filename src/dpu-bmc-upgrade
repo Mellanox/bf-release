@@ -101,15 +101,19 @@ fi
 
 if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
 	if [ -e "${ATF_UEFI_IMAGE}" ]; then
-		if function_exists update_atf_uefi; then
-			update_atf_uefi "${ATF_UEFI_IMAGE}"
-		else
+		if ! function_exists update_atf_uefi; then
 			log  "ERROR: BSP upgrade function does not exist"
+			UPDATE_ATF_UEFI="no"
 		fi
 	else
 		log "ERROR: BSP upgrade capsule ${ATF_UEFI_IMAGE} was not found"
 		UPDATE_ATF_UEFI="no"
 	fi
+fi
+
+if ! function_exists bmc_components_update; then
+	log  "ERROR: BMC upgrade function does not exist"
+	skip_bmc 0
 fi
 
 if [ "$UPDATE_BMC_FW" == "yes" ]; then
@@ -133,11 +137,16 @@ if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
 	fi
 fi
 
-if function_exists update_atf_uefi; then
-	bmc_components_update
-else
-	log  "ERROR: BMC upgrade function does not exist"
+calculate_total_weight
+update_progress install_setup 0
+
+# Update components
+if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+	update_atf_uefi "${ATF_UEFI_IMAGE}"
+	update_progress atf_uefi $?
 fi
+
+bmc_components_update
 
 log "Runtime upgrade finished"
 sleep 3
