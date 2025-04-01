@@ -1090,6 +1090,8 @@ update_bmc_fw()
 	if [ "$BMC_REBOOT" != "yes" ]; then
 		log "INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}. BMC restart is required."
 	fi
+
+	BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
 }
 
 update_cec_fw()
@@ -1182,6 +1184,8 @@ update_cec_fw()
 			log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
 		fi
 	fi
+
+	BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
 }
 
 bmc_reboot()
