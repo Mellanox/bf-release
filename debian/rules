@@ -86,7 +86,13 @@ endif
 	dh_installdirs -p$(pname)  etc/mellanox
 	install -m 0644 src/mlnx-bf.conf	debian/$(pname)/etc/mellanox
 	install -m 0644 src/mlnx-ovs.conf	debian/$(pname)/etc/mellanox
+ifeq ($(DIST_NAME_L), ubuntu)
+ifeq ($(shell lsb_release -rs | cut -d. -f1),22)
+	# Enable OVS-DOCA for Ubuntu 22.04
+	sed -i 's/OVS_DOCA="no"/OVS_DOCA="yes"/' debian/$(pname)/etc/mellanox/mlnx-ovs.conf
 
+endif
+endif
 	dh_installdirs -p$(pname)  etc/acpi/actions
 	install -m 0755 src/rebootcontrol	debian/$(pname)/etc/acpi/actions
 	install -m 0755 src/bf-upgrade		debian/$(pname)/etc/acpi/actions
