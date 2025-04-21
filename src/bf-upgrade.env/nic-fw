@@ -1,6 +1,7 @@
 WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
 NIC_FW_UPDATE_DONE=0
 FORCE_NIC_FW_UPDATE=${FORCE_NIC_FW_UPDATE:-"no"}
+NIC_FW_RESET=${NIC_FW_RESET:-"yes"}
 NIC_FW_RESET_REQUIRED=0
 NIC_FW_FOUND=0
 FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
@@ -192,6 +193,11 @@ update_nic_firmware()
 
 reset_nic_firmware()
 {
+	if [ "$NIC_FW_RESET" != "yes" ]; then
+		log "Skip NIC Firmware reset"
+		return
+	fi
+
 	if [ $NIC_FW_UPDATE_DONE -eq 1 ]; then
 		if [ $NIC_FW_UPDATE_PASSED -eq 1 ]; then
 			# Reset NIC FW
