@@ -151,6 +151,18 @@ fw_reset()
 		ilog "$($CHROOT /sbin/mlnx_bf_configure 2>&1)"
 	fi
 
+	if ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
+		log "INFO: Live Patch NIC Firmware reset is supported."
+		msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
+		if [ $? -ne 0 ]; then
+			log "INFO: Live Patch NIC Firmware reset failed."
+			log "INFO: $msg"
+		else
+			log "INFO: Live Patch NIC Firmware reset done"
+			return
+		fi
+	fi
+
 	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-180}
 	SECONDS=0
 	while ! ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver is the owner" | grep -qw "\-Supported")
