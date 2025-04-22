@@ -1,12 +1,36 @@
+WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
 NIC_FW_UPDATE_DONE=0
 FORCE_NIC_FW_UPDATE=${FORCE_NIC_FW_UPDATE:-"no"}
+NIC_FW_RESET=${NIC_FW_RESET:-"yes"}
 NIC_FW_RESET_REQUIRED=0
 NIC_FW_FOUND=0
 FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
 FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
 is_nic_mode=${is_nic_mode:-0}
+cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+flint_dev=$cx_pcidev
+FLINT=mstflint
+if [ ! -x /usr/bin/mstflint ]; then
+	FLINT=flint
+fi
 
+PROVIDED_NIC_FW_VERSION=""
 CHROOT=
+
+is_SecureBoot=0
+if (mokutil --sb-state 2>&1 | grep -q "SecureBoot enabled"); then
+        is_SecureBoot=1
+fi
+
+if [ $is_SecureBoot -eq 1 ]; then
+        mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+        if [ ! -n "${mst_dev}" ]; then
+                mst start > /dev/null 2>&1
+        fi
+		flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+		FLINT=flint
+fi
+
 
 running_nic_fw()
 {
@@ -16,8 +40,27 @@ running_nic_fw()
 provided_nic_fw()
 {
 	if [ ! -z "${PSID}" ]; then
-		$CHROOT ${FW_DIR}/mlxfwmanager_sriov_dis_aarch64_${cx_dev_id} --list 2> /dev/null | grep -w "${PSID}" | awk '{print $4}'
+		if [ -n "$NIC_FW_BIN" ]; then
+			PROVIDED_NIC_FW_VERSION=$($FLINT -i $NIC_FW_BIN q 2>&1 | grep -w 'FW Version:' | awk '{print $NF}')
+		else
+			PROVIDED_NIC_FW_VERSION=$($CHROOT ${FW_DIR}/mlxfwmanager_sriov_dis_aarch64_${cx_dev_id} --list 2> /dev/null | grep -w "${PSID}" | awk '{print $4}')
+		fi
+		echo $PROVIDED_NIC_FW_VERSION
 	fi
+}
+
+is_nic_fw_update_required()
+{
+	if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
+		log "INFO: FORCE_NIC_FW_UPDATE is set."
+		return 0
+	fi
+
+	if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
+		log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
+		return 1
+	fi
+	return 0
 }
 
 fw_update()
@@ -37,13 +80,8 @@ fw_update()
 	fi
 
 	if [ $NIC_FW_FOUND -eq 1 ]; then
-		if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
-			if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
-				log "INFO: Installed NIC Firmware is the same as provided. FORCE_NIC_FW_UPDATE is set."
-			else
-				log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
-				return
-			fi
+		if ! is_nic_fw_update_required; then
+			return
 		fi
 
 		log "INFO: Updating NIC firmware..."
@@ -75,6 +113,21 @@ fw_update()
 	fi
 }
 
+fw_bin_update()
+{
+	if ! is_nic_fw_update_required; then
+		return
+	fi
+	output=$($FLINT -d $flint_dev -i $NIC_FW_BIN -y b 2>&1)
+	if [ $? -eq 0 ]; then
+		NIC_FW_UPDATE_PASSED=1
+		log "INFO: NIC firmware update done: $(provided_nic_fw). NIC Firmware reset or Host power cycle is required to activate the new NIC Firmware."
+	else
+		NIC_FW_UPDATE_PASSED=0
+		log "INFO: NIC firmware update failed: $output"
+	fi
+}
+
 fw_reset()
 {
 	if [ $is_nic_mode -eq 1 ]; then
@@ -96,6 +149,18 @@ fw_reset()
 	if [ $run_mlnx_bf_configure -eq 1 ]; then
 		ilog "Running mlnx_bf_configure:"
 		ilog "$($CHROOT /sbin/mlnx_bf_configure 2>&1)"
+	fi
+
+	if ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
+		log "INFO: Live Patch NIC Firmware reset is supported."
+		msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
+		if [ $? -ne 0 ]; then
+			log "INFO: Live Patch NIC Firmware reset failed."
+			log "INFO: $msg"
+		else
+			log "INFO: Live Patch NIC Firmware reset done"
+			return
+		fi
 	fi
 
 	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-180}
@@ -130,12 +195,21 @@ fw_reset()
 update_nic_firmware()
 {
 	if [ $NIC_FW_UPDATE_DONE -eq 0 ]; then
-		fw_update
+		if [ -n "$NIC_FW_BIN" ]; then
+			fw_bin_update
+		else
+			fw_update
+		fi
 	fi
 }
 
 reset_nic_firmware()
 {
+	if [ "$NIC_FW_RESET" != "yes" ]; then
+		log "Skip NIC Firmware reset"
+		return
+	fi
+
 	if [ $NIC_FW_UPDATE_DONE -eq 1 ]; then
 		if [ $NIC_FW_UPDATE_PASSED -eq 1 ]; then
 			# Reset NIC FW

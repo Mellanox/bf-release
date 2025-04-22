@@ -22,8 +22,68 @@
 #
 ###############################################################################
 
+rlog()
+{
+    msg=$(echo "$*" | sed 's/INFO://;s/ERROR:/ERR/;s/WARNING:/WARN/')
+    bfrshlog "$msg"
+}
+
+ilog()
+{
+    msg="[$(date +%H:%M:%S)] $*"
+    echo "$msg" >> $LOG
+    echo "$msg" > /dev/hvc0
+}
+
+log()
+{
+    ilog "$*"
+    rlog "$*"
+}
+
+bind_partitions()
+{
+    local wdir=$1
+    mount --bind /proc ${wdir}/proc
+    mount --bind /dev ${wdir}/dev
+    mount --bind /dev/pts ${wdir}/dev/pts
+    mount --bind /sys ${wdir}/sys
+    mount -t efivarfs none ${wdir}/sys/firmware/efi/efivars
+}
+
+unmount_partition()
+{
+    retries=0
+    while (grep -wq $1 /proc/mounts) && [ $retries -lt 5 ]; do
+        ilog "Unmounting $1"
+        umount $1 || umount -l $1
+        sync
+        let retries++
+    done
+}
+
+unmount_partitions()
+{
+    local wdir=$1
+    ilog "Unmount partitions"
+    for part in \
+        ${wdir}/dev/pts \
+        ${wdir}/dev \
+        ${wdir}/sys/fs/fuse/connections \
+        ${wdir}/sys/firmware/efi/efivars \
+        ${wdir}/sys \
+        ${wdir}/proc
+    do
+        unmount_partition $part
+    done
+}
+
 # Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
+INITIAL_DATA_RECEIVE_TIMEOUT=20
+
+logfile=dpu.installation.log
+LOG=/var/log/$logfile
 
 # Source a configuration if exists.
 [ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
@@ -55,7 +115,8 @@ UPGRADE_IMAGE=${WDIR}/upgrade.bfb
 rm -f ${UPGRADE_IMAGE}* 2>/dev/null
 
 idle_cnt=0
-while [ $idle_cnt -lt $IDLE_MAX ]; do
+data_receive_timeout=$INITIAL_DATA_RECEIVE_TIMEOUT
+while [ $idle_cnt -lt $data_receive_timeout ]; do
   cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
   filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
   if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
@@ -64,6 +125,7 @@ while [ $idle_cnt -lt $IDLE_MAX ]; do
     sleep 1
   else
     idle_cnt=0
+	data_receive_timeout=$IDLE_MAX
     cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
   fi
 done
@@ -72,18 +134,44 @@ done
 cd ${WDIR}
 /bin/rm -f dump-*
 
+if [ ! -s "${UPGRADE_IMAGE}" ]; then
+	log "Failed to receive a BFB"
+	exit 1
+fi
+
+log "Extracting BFB ${UPGRADE_IMAGE}"
 mlx-mkbfb -x ${UPGRADE_IMAGE}
 rm -f ${UPGRADE_IMAGE}
 
+IS_BUNDLE=0
+
+# PLDM BFB format:
 # dump-boot-args-v0 - bf.cfg
 # dump-capsule-v0 - BSP upgrade capsule
 # dump-image-v0 - BMC firmware image
 # dump-upgrade-image-v0 - CEC upgrade image
 # dump-ramdisk-v0 - NIC firmware Golden Image
+# dump-nicfw-v0 - NIC firmware
+
+# BUNDLE BFB format:
+# dump-boot-args-v0 - bf.cfg
+# dump-initramfs-v0 - BFB installation environment that contains all the components (BMC, CEC, NIC FW, etc.)
+# dump-image-v0 - Linux kernel
 
 if ( bash -n dump-boot-args-v0 ); then
-	bfrshlog "Found bf.cfg"
-	. dump-boot-args-v0
+	if (grep -qw "initrd=initramfsroot" dump-boot-args-v0); then
+		IS_BUNDLE=1
+	else
+		bfrshlog "Found bf.cfg"
+		. dump-boot-args-v0
+		if [ "$LFWP" == "yes" ]; then
+			IS_BUNDLE=1
+		fi
+	fi
+fi
+
+if [ $IS_BUNDLE -eq 1 ]; then
+	bfrshlog "Detected Bundle BFB"
 fi
 
 # Include scripts that provide upgrade infrastructure
@@ -103,54 +191,129 @@ if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/bmc 2>/dev/null); then
 	. ${SCRIPTS_DIR}/bf-upgrade.env/bmc
 fi
 
-if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-	if [ -e dump-capsule-v0 ]; then
-		if function_exists update_atf_uefi; then
-			update_atf_uefi $(readlink -f dump-capsule-v0)
+if [ -n "$BMC_IP" ]; then
+	if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+	    create_vlan
+	else
+	    BMC_LINK_UP="yes"
+	fi
+fi
+
+if [ $IS_BUNDLE -eq 0 ]; then
+
+	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+		if [ -e dump-capsule-v0 ]; then
+			if ! function_exists update_atf_uefi; then
+				log  "ERROR: BSP upgrade function does not exist"
+				UPDATE_ATF_UEFI="no"
+			fi
 		else
-			log  "ERROR: BSP upgrade function does not exist"
+			log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
+			UPDATE_ATF_UEFI="no"
 		fi
-	else
-		log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
-		UPDATE_ATF_UEFI="no"
 	fi
-fi
 
-if [ "$UPDATE_BMC_FW" == "yes" ]; then
-	if [ -e dump-image-v0 ]; then
-		BMC_IMAGE=$(readlink -f dump-image-v0)
-	else
-		log "ERROR: BMC firmware dump-image-v0 was not found"
-		UPDATE_BMC_FW="no"
+	if ! function_exists bmc_components_update; then
+		log  "ERROR: BMC upgrade function does not exist"
+		skip_bmc 0
 	fi
-fi
 
-if [ "$UPDATE_CEC_FW" == "yes" ]; then
-	if [ -e dump-upgrade-image-v0 ]; then
-		CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
-	else
-		log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
-		UPDATE_CEC_FW="no"
+	if [ "$UPDATE_BMC_FW" == "yes" ]; then
+		if [ -e dump-image-v0 ]; then
+			BMC_IMAGE=$(readlink -f dump-image-v0)
+		else
+			log "ERROR: BMC firmware dump-image-v0 was not found"
+			UPDATE_BMC_FW="no"
+		fi
 	fi
-fi
 
-if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
-	if [ -e dump-ramdisk-v0 ]; then
-		NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
-	else
-		# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
-		UPDATE_NIC_FW_GOLDEN_IMAGE="no"
+	if [ "$UPDATE_CEC_FW" == "yes" ]; then
+		if [ -e dump-upgrade-image-v0 ]; then
+			CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
+		else
+			log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
+			UPDATE_CEC_FW="no"
+		fi
 	fi
-fi
 
-if function_exists update_atf_uefi; then
+	UPDATE_DPU_GOLDEN_IMAGE="no"
+
+	if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
+		if [ -e dump-ramdisk-v0 ]; then
+			NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
+		else
+			# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
+			UPDATE_NIC_FW_GOLDEN_IMAGE="no"
+		fi
+	fi
+
+	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+		if [ -e dump-nicfw-v0 ]; then
+			if function_exists update_nic_firmware; then
+				NIC_FW_BIN=$(readlink -f dump-nicfw-v0)
+			else
+				log  "ERROR: NIC Firmware upgrade function does not exist"
+				WITH_NIC_FW_UPDATE="no"
+			fi
+		else
+			# log "ERROR: NIC firmware binary dump-nicfw-v0 was not found"
+			WITH_NIC_FW_UPDATE="no"
+		fi
+	fi
+
+	calculate_total_weight
+	update_progress install_setup 0
+
+	# Update components
+	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+		update_atf_uefi $(readlink -f dump-capsule-v0)
+		update_progress atf_uefi $?
+	fi
+
 	bmc_components_update
-else
-	log  "ERROR: BMC upgrade function does not exist"
+
+	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+		update_nic_firmware
+		update_progress nic_firmware $?
+	fi
+else #BUNDLE BFB
+	if [ ! -e dump-initramfs-v0 ]; then
+		log "ERROR: BFB's initramfs dump-initramfs-v0 was not found"
+		exit 1
+	fi
+
+	log "Extracting BFB's initramfs"
+	mkdir -p initramfs
+	cd initramfs
+	gzip -d < ../dump-initramfs-v0 | cpio -id
+	cp ../dump-boot-args-v0 ./etc/bf.cfg
+	echo "UPDATE_DPU_OS=no" >> ./etc/bf.cfg
+	if (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+	    BMC_LINK_UP="yes" >> ./etc/bf.cfg
+	fi
+
+	if [ ! -e ubuntu/install.sh ]; then
+		log "ERROR: ubuntu/install.sh was not found"
+		exit 1
+	fi
+	log "Running ubuntu/install.sh"
+
+	bind_partitions ${WDIR}/initramfs
+
+	chroot . /ubuntu/install.sh
+	unmount_partitions ${WDIR}/initramfs
+	cat ./tmp/*log >> /var/log/bf-upgrade.log || true
+	cd ..
 fi
 
 cd ${WDIR}
-/bin/rm -f dump-*
+/bin/rm -rf dump-*
+
+if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
+	/bin/rm -rf ${WDIR}/initramfs
+else
+	ilog "Failed to unmount ${WDIR}/initramfs"
+fi
 
 log "Runtime upgrade finished"
 sleep 3
