@@ -63,7 +63,7 @@ get_version_and_release()
 print_ofed()
 {
 	if [ -e /etc/debian_version ]; then
-		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | awk '{print $2, $3}'
+		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | awk 'NF {print "- " $2, $3}'
 	else
 		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | xargs rpm -q --queryformat="[- %{NAME} %{VERSION}-%{RELEASE}]\n"
 	fi
@@ -88,33 +88,29 @@ get_cec_fw()
 }
 
 cat << EOF
+
 Firmware:
 - ATF: $BUILD_ATF
 - UEFI: $BUILD_UEFI
+- BSP: $BUILD_BSP
 - NIC Firmware: $NIC_FW
 - BMC Firmware: `get_bmc_fw`
 - CEC Firmware: `get_cec_fw`
 
-Versions:
-- DOCA Base (OFED): ${OFED}
-- BSP: $BUILD_BSP
-- mlnx-dpdk: `/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
+Drivers:
+- mlnx-dpdk:`/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
 - Kernel: $(uname -r)
+
+Tools:
 - MFT: `get_version_and_release mft`
 - mstflint: `get_version_and_release mstflint`
 EOF
 if [ -n "$MLX_REGEX" ]; then
     echo "- mlx-regex: ${MLX_REGEX}"
 fi
-cat << EOF
-- collectx-clxapi: `get_version collectx-clxapi`
-- libvma: `get_version libvma`
-EOF
 
 if ( grep -q "DISTRIB_ID=Ubuntu" /etc/lsb-release > /dev/null 2>&1 ); then
 cat << EOF
-- `get_version libxlio`
-- `get_version dpcp`
 EOF
 fi
 
@@ -143,12 +139,14 @@ cat << EOF
 
 DOCA:
 $(for doca in `dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
+- collectx-clxapi: `get_version collectx-clxapi`
 EOF
 else
 cat << EOF
 
 DOCA:
 $(for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do echo "- `get_version $doca`";done)
+- collectx-clxapi: `get_version collectx-clxapi`
 EOF
 fi
 
@@ -188,6 +186,7 @@ cat << EOF
 
 OFED:
 `print_ofed`
+
 EOF
 fi
 
