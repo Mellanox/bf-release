@@ -707,6 +707,7 @@ BMC_TASK_TIMEOUT=${BMC_TASK_TIMEOUT:-"1800"}
 UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
 BMC_REBOOT=${BMC_REBOOT:-"no"}
 CEC_REBOOT=${CEC_REBOOT:-"no"}
+BMC_UPGRADE_RESET=${BMC_UPGRADE_RESET:-"no"}
 FIELD_MODE_SET=0
 UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
 BMC_INSTALLED_VERSION=""
@@ -1070,6 +1071,10 @@ update_bmc_fw()
 	if [ "$BMC_REBOOT" != "yes" ]; then
 		log "INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}. BMC restart is required."
 	fi
+
+	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
+		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
+	fi
 }
 
 update_cec_fw()
@@ -1161,6 +1166,10 @@ update_cec_fw()
 		else
 			log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
 		fi
+	fi
+
+	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
+		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
 	fi
 }
 
