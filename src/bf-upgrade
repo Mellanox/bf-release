@@ -164,7 +164,7 @@ if ( bash -n dump-boot-args-v0 ); then
 	else
 		bfrshlog "Found bf.cfg"
 		. dump-boot-args-v0
-		if [ "$LFWP" == "yes" ]; then
+		if [[ "$LFWP" == "yes" || -e dump-initramfs-v0 ]]; then
 			IS_BUNDLE=1
 		fi
 	fi
