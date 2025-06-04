@@ -147,13 +147,13 @@ if [ -e /etc/debian_version ]; then
 cat << EOF
 
 SoC Platform:
-$(for package in `dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n`; do echo "- `get_version $package`";done)
+$(for package in `dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio' | awk '{print $2}' | sort -n`; do echo "- `get_version $package`";done)
 EOF
 else
 cat << EOF
 
 SoC Platform:
-$(for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do echo "- `get_version $package`";done)
+$(for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio' | sort -n); do echo "- `get_version $package`";done)
 EOF
 fi
 
