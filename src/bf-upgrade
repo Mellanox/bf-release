@@ -99,8 +99,7 @@ if [ ! -e "$BOOTFIFO" ]; then
   [ ! -e "$BOOTFIFO" ] && exit 1
 fi
 
-WDIR=${WDIR:-"/tmp/bfb"}
-mkdir -p ${WDIR}
+WDIR=${WDIR:-"$(mktemp -d /tmp/bfb.XXXXXX)"}
 
 # Only handles upgrade in closed state.
 state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
@@ -144,6 +143,15 @@ mlx-mkbfb -x ${UPGRADE_IMAGE}
 rm -f ${UPGRADE_IMAGE}
 
 IS_BUNDLE=0
+UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
+UPDATE_DPU_OS=${UPDATE_DPU_OS:-"no"}
+UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
+UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
+UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
+UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
+WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
+RUNTIME_UPGRADE="yes"
+USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
 
 # PLDM BFB format:
 # dump-boot-args-v0 - bf.cfg
@@ -165,6 +173,9 @@ if ( bash -n dump-boot-args-v0 ); then
 		bfrshlog "Found bf.cfg"
 		. dump-boot-args-v0
 		if [[ "$LFWP" == "yes" || -e dump-initramfs-v0 ]]; then
+			if [ "$LFWP" == "yes" ]; then
+				log "LFWP upgrade flow"
+			fi
 			IS_BUNDLE=1
 		fi
 	fi
@@ -286,31 +297,57 @@ else #BUNDLE BFB
 	mkdir -p initramfs
 	cd initramfs
 	gzip -d < ../dump-initramfs-v0 | cpio -id
-	cp ../dump-boot-args-v0 ./etc/bf.cfg
+	cat ../dump-boot-args-v0 > ./etc/bf.cfg
 	echo "UPDATE_DPU_OS=no" >> ./etc/bf.cfg
+	echo "RUNTIME_UPGRADE=$RUNTIME_UPGRADE" >> ./etc/bf.cfg
 	if (ping -c 3 $BMC_IP > /dev/null 2>&1); then
 	    BMC_LINK_UP="yes" >> ./etc/bf.cfg
 	fi
+	if [ "$USE_BFB_INSTALL" == "yes" ]; then
+		if [ ! -e ubuntu/install.sh ]; then
+			log "ERROR: ubuntu/install.sh was not found. Only bf-fwbundle is supported."
+			exit 1
+		fi
+		log "Running ubuntu/install.sh"
 
-	if [ ! -e ubuntu/install.sh ]; then
-		log "ERROR: ubuntu/install.sh was not found"
-		exit 1
+		bind_partitions ${WDIR}/initramfs
+
+		echo "[$(date +%H:%M:%S)] Starting upgrade from bundle" > /var/log/bf-upgrade.log
+		chroot ${WDIR}/initramfs bash -c  /ubuntu/install.sh
+		cat ${WDIR}/initramfs/tmp/*log >> /var/log/bf-upgrade.log 2> /dev/null || true
+		unmount_partitions ${WDIR}/initramfs
+	else
+		CHROOT_DIR="$PWD"
+		. ./etc/bf.cfg
+		calculate_total_weight
+		update_progress install_setup 0
+
+		# Update components
+		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+			if [ -e ./lib/firmware/mellanox/boot/capsule/boot_update2.cap ]; then
+				update_atf_uefi $(readlink -f ./lib/firmware/mellanox/boot/capsule/boot_update2.cap)
+				update_progress atf_uefi $?
+			fi
+		fi
+
+		bmc_components_update
+
+		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+			update_nic_firmware
+			update_progress nic_firmware $?
+			reset_nic_firmware
+		fi
+		cat /tmp/*log >> /var/log/bf-upgrade.log 2> /dev/null || true
 	fi
-	log "Running ubuntu/install.sh"
-
-	bind_partitions ${WDIR}/initramfs
-
-	chroot . /ubuntu/install.sh
-	unmount_partitions ${WDIR}/initramfs
-	cat ./tmp/*log >> /var/log/bf-upgrade.log || true
 	cd ..
 fi
 
 cd ${WDIR}
 /bin/rm -rf dump-*
+cd
 
 if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
-	/bin/rm -rf ${WDIR}/initramfs
+	/bin/rm -rf ${WDIR}
 else
 	ilog "Failed to unmount ${WDIR}/initramfs"
 fi
