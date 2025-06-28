@@ -133,10 +133,20 @@ if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
 	fi
 fi
 
-if function_exists update_atf_uefi; then
+if function_exists bmc_components_update; then
 	bmc_components_update
 else
 	log  "ERROR: BMC upgrade function does not exist"
+fi
+
+if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+	if function_exists update_nic_firmware; then
+		MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-0}
+		update_nic_firmware
+		reset_nic_firmware
+	else
+		log  "ERROR: NIC FW upgrade function does not exist"
+	fi
 fi
 
 log "Runtime upgrade finished"
