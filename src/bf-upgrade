@@ -99,14 +99,14 @@ if [ ! -e "$BOOTFIFO" ]; then
   [ ! -e "$BOOTFIFO" ] && exit 1
 fi
 
-WDIR=${WDIR:-"$(mktemp -d /tmp/bfb.XXXXXX)"}
-
 # Only handles upgrade in closed state.
 state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
 [ "$state" != "closed" ] && exit 0
 
 # Add a delay for the boot-fifo to be filled.
 sleep $IDLE_MAX
+
+WDIR=${WDIR:-"$(mktemp -d /tmp/bfb.XXXXXX)"}
 
 # Example code to fetch the upgrade bfb.
 # !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
@@ -329,6 +329,15 @@ else #BUNDLE BFB
 				update_progress atf_uefi $?
 			fi
 		fi
+
+		BMC_PATH=${BMC_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
+		BMC_IMAGE=${BMC_IMAGE:-$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)}
+		CEC_PATH=${CEC_PATH:-$(readlink -f ./lib/firmware/mellanox/cec/)}
+		CEC_IMAGE=${CEC_IMAGE:-$(/bin/ls ${CEC_PATH}/bf3-cec*.fwpkg 2> /dev/null)}
+		DPU_GI_PATH=${DPU_GI_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
+		DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)}
+		NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
+		NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-$(/bin/ls ${NIC_FW_GI_PATH}/fw*bfb 2> /dev/null)}
 
 		bmc_components_update
 
