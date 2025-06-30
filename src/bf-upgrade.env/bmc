@@ -26,6 +26,17 @@ CEC_MIN_RESET_VERSION="00.02.0180.0000"
 UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
 UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
 RESET_BMC_RSHIM_LOG=${RESET_BMC_RSHIM_LOG:-"yes"}
+bmc_pref=""
+if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
+        bmc_pref="bf3"
+elif (lspci -n -d 15b3: | grep -wq 'a2d6'); then
+        bmc_pref="bf2"
+fi
+
+NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-"/lib/firmware/mellanox/bmc"}
+DPU_GI_PATH=${DPU_GI_PATH:-"/lib/firmware/mellanox/bmc"}
+BMC_PATH=${BMC_PATH:-"/lib/firmware/mellanox/bmc"}
+CEC_PATH=${CEC_PATH:-"/lib/firmware/mellanox/cec"}
 
 FORCE_BMC_FW_INSTALL=${FORCE_BMC_FW_INSTALL:-"no"}
 FORCE_CEC_INSTALL=${FORCE_CEC_INSTALL:-"no"}

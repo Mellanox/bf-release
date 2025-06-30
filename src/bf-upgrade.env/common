@@ -8,12 +8,26 @@ LOG=/var/log/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")
 
+if [ -x /usr/bin/flint ]; then
+	FLINT=/usr/bin/flint
+fi
 FLINT=${FLINT:-mstflint}
+
 cx_pcidev=${cx_pcidev:-$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)}
 cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
 pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
 dpu_part_number=${dpu_part_number:-$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')}
 PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
+flint_dev=$cx_pcidev
+
+if [ -z "${dpu_part_number}" ]; then
+	mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+	if [ ! -n "${mst_dev}" ]; then
+		mst start > /dev/null 2>&1
+	fi
+	flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+	dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
+fi
 
 total_weight=0
 current_progress=0
