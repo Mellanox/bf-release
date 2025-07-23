@@ -27,10 +27,13 @@ PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/opt/mellanox
 
 NIC_FW_UPDATE_DONE=0
 FORCE_NIC_FW_UPDATE=${FORCE_NIC_FW_UPDATE:-"no"}
+NIC_FW_RESET=${NIC_FW_RESET:-"yes"}
+FORCE_NIC_FW_RESET=${FORCE_NIC_FW_RESET:-"no"}
 NIC_FW_RESET_REQUIRED=0
 NIC_FW_FOUND=0
 FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
 FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
+PROVIDED_NIC_FW_VERSION=""
 
 distro="Ubuntu"
 
@@ -518,7 +521,24 @@ running_nic_fw()
 
 provided_nic_fw()
 {
-	${FW_DIR}/mlxfwmanager_sriov_dis_aarch64_${cx_dev_id} --list 2> /dev/null | grep -w "${PSID}" | awk '{print $4}'
+	if [ ! -z "${PSID}" ]; then
+		PROVIDED_NIC_FW_VERSION=$(${FW_DIR}/mlxfwmanager_sriov_dis_aarch64_${cx_dev_id} --list 2> /dev/null | grep -w "${PSID}" | awk '{print $4}')
+		echo $PROVIDED_NIC_FW_VERSION
+	fi
+}
+
+is_nic_fw_update_required()
+{
+	if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
+		log "INFO: FORCE_NIC_FW_UPDATE is set."
+		return 0
+	fi
+
+	if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
+		log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
+		return 1
+	fi
+	return 0
 }
 
 fw_update()
@@ -528,13 +548,14 @@ fw_update()
 	fi
 
 	if [ $NIC_FW_FOUND -eq 1 ]; then
-		if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
-			if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
-				log "INFO: Installed NIC Firmware is the same as provided. FORCE_NIC_FW_UPDATE is set."
-			else
-				log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
-				return
-			fi
+		# Check if firmware image was already updated on flash
+		if ($FLINT -d $cx_pcidev q 2>&1 | grep -q 'FW Version(Running)'); then
+			log "INFO: Reactivating previous firmware image on the NIC"
+			ilog "$($FLINT -d $cx_pcidev ir)"
+		fi
+
+		if ! is_nic_fw_update_required; then
+			return
 		fi
 
 		log "INFO: Updating NIC firmware..."
@@ -553,16 +574,19 @@ fw_update()
 			cat /tmp/mlnx_fw_update.log > /dev/ttyAMA0
 			cat /tmp/mlnx_fw_update.log >> $LOG
 		fi
+		NIC_FW_UPDATE_DONE=1
 		if [ $rc -ne 0 ] || (grep -q '\-E- Failed' /tmp/mlnx_fw_update.log); then
 			NIC_FW_UPDATE_PASSED=0
 			log "INFO: NIC firmware update failed"
+			return 1
 		else
 			NIC_FW_UPDATE_PASSED=1
 			log "INFO: NIC firmware update done: $(provided_nic_fw)"
+			return 0
 		fi
-		NIC_FW_UPDATE_DONE=1
 	else
 		log "WARNING: NIC Firmware files were not found"
+		return 1
 	fi
 }
 
@@ -571,6 +595,27 @@ fw_reset()
 	/sbin/modprobe -a mlx5_core ib_umad
 
 	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-180}
+	if (mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
+		log "INFO: Live Patch NIC Firmware reset is supported."
+		msg=$(mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
+		if [ $? -ne 0 ]; then
+			log "INFO: Live Patch NIC Firmware reset failed."
+			log "INFO: $msg"
+			if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
+				return
+			fi
+		else
+			log "INFO: Live Patch NIC Firmware reset done"
+			return
+		fi
+	else
+		if [ "$LFWP" == "yes" ]; then
+			log "INFO: Live Patch NIC Firmware reset is not supported."
+			if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
+				return
+			fi
+		fi
+	fi
 	SECONDS=0
 	while ! (mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver is the owner" | grep -qw "\-Supported")
 	do
@@ -581,6 +626,11 @@ fw_reset()
 		sleep 1
 	done
 
+	if ! (mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver restart and PCI reset" | grep -qw "\-Supported"); then
+		log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+		return
+	fi
+
 	log "INFO: Running NIC Firmware reset"
 	# Wait for these messages to be pulled by the rshim service
 	# as mlxfwreset will restart the DPU
@@ -588,10 +638,15 @@ fw_reset()
 
 	msg=$(mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 3 --sync 1 r 2>&1)
 	if [ $? -ne 0 ]; then
-		log "INFO: NIC Firmware reset failed"
+		log "INFO: NIC Firmware reset failed. System level reset is required"
 		log "INFO: $msg"
 	else
 		log "INFO: NIC Firmware reset done"
+		if [ "$(running_nic_fw)" == "${PROVIDED_NIC_FW_VERSION}" ]; then
+			log "INFO: NIC Firmware reset passed. Running NIC FW: ${PROVIDED_NIC_FW_VERSION}"
+		else
+			log "INFO: NIC Firmware reset failed. Host power cycle is required"
+		fi
 	fi
 }
 
@@ -599,11 +654,17 @@ update_nic_firmware()
 {
 	if [ $NIC_FW_UPDATE_DONE -eq 0 ]; then
 		fw_update
+		return $?
 	fi
 }
 
 reset_nic_firmware()
 {
+	if [ "$NIC_FW_RESET" != "yes" ]; then
+		log "Skip NIC Firmware reset"
+		return
+	fi
+
 	if [ $NIC_FW_UPDATE_DONE -eq 1 ]; then
 		if [ $NIC_FW_UPDATE_PASSED -eq 1 ]; then
 			# Reset NIC FW
@@ -722,7 +783,7 @@ UEFI_PASSWORD=${UEFI_PASSWORD:-""}
 NEW_UEFI_PASSWORD=${NEW_UEFI_PASSWORD:-""}
 OOB_IP=${OOB_IP:-"192.168.240.2"}
 OOB_NETPREFIX=${OOB_NETPREFIX:-"29"}
-BMC_IP_TIMEOUT=${BMC_IP_TIMEOUT:-600}
+BMC_IP_TIMEOUT=${BMC_IP_TIMEOUT:-60}
 BMC_TASK_TIMEOUT=${BMC_TASK_TIMEOUT:-"1800"}
 UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
 BMC_REBOOT=${BMC_REBOOT:-"no"}
@@ -735,6 +796,8 @@ BMC_MIN_MULTIPART_VERSION="24.04"
 CEC_MIN_RESET_VERSION="00.02.0180.0000"
 UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
 UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
+UPDATE_CERTIFICATES=${UPDATE_CERTIFICATES:-"yes"}
+RESET_BMC_RSHIM_LOG=${RESET_BMC_RSHIM_LOG:-"yes"}
 bmc_pref=""
 if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
 	bmc_pref="bf3"
@@ -784,6 +847,23 @@ export task_status=""
 SSH="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 SCP="scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
+reset_bmc_rshim_log()
+{
+	ilog "Resetting BMC Rshim log"
+	is_bmc_rshim=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'test -e /dev/rshim0/misc && echo "yes" || echo "no"')
+	if [ "$is_bmc_rshim" == "no" ]; then
+		ilog "BMC Rshim is not found"
+		return
+	fi
+	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 1" > /dev/rshim0/misc')"
+	log "Resetting BMC Rshim log"
+	# Wait for the misc to flush
+	sleep 10
+	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'cat /dev/rshim0/misc')"
+	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 0" > /dev/rshim0/misc')"
+	log "Rshim log cleared"
+}
+
 skip_bmc()
 {
 	log "WARN Skipping BMC components upgrade."
@@ -814,7 +894,7 @@ wait_for_bmc_ip()
 create_vlan()
 {
 	if [ "$BMC_LINK_UP" == "yes" ]; then
-		return
+		return 0
 	fi
 
 	if [ "$(get_field_mode)" == "01" ]; then
@@ -827,42 +907,66 @@ create_vlan()
 	if [ ! -d "/sys/bus/platform/drivers/mlxbf_gige" ]; then
 		ilog "- ERROR: mlxbf_gige driver is not loaded"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	OOB_IF=$(ls -1 "/sys/bus/platform/drivers/mlxbf_gige/MLNXBF17:00/net")
 	ilog "Configuring VLAN id 4040 on ${OOB_IF}. This operation may take up to $BMC_IP_TIMEOUT seconds"
 	SECONDS=0
-	while ! ip link show vlan4040 2> /dev/null | grep -w '<BROADCAST,MULTICAST,UP,LOWER_UP>'; do
+	while ! (ping -c 3 $BMC_IP > /dev/null 2>&1); do
 		if [ $SECONDS -gt $BMC_IP_TIMEOUT ]; then
 			rlog "ERR Failed to create VLAN."
 			ilog "- ERROR: Failed to create VLAN interface after $SECONDS sec. All the BMC related operations will be skipped."
 			skip_bmc
-			return
+			return 1
 		fi
-		ip link add link ${OOB_IF} name vlan4040 type vlan id 4040
-		output=$(dhclient vlan4040 2>&1)
+		ilog "Bringing up ${OOB_IF} interface..."
+		ilog "$(ip link set dev ${OOB_IF} up 2>&1)"
+		while [ "$(cat /sys/class/net/${OOB_IF}/operstate 2> /dev/null)" != "up" ]; do
+			ilog "${OOB_IF} status is $(cat /sys/class/net/${OOB_IF}/operstate 2>&1) after $SECONDS sec."
+			if [ $SECONDS -gt $BMC_IP_TIMEOUT ]; then
+				rlog "ERR Failed to bring UP ${OOB_IF}."
+				ilog "- ERROR: Failed to bring UP ${OOB_IF} interface after $SECONDS sec. All the BMC related operations will be skipped."
+				skip_bmc
+				return 1
+			fi
+			sleep 1
+		done
+		ilog "${OOB_IF} interface is UP."
+		ilog "$(ip link show ${OOB_IF} 2>&1)"
+		if [ ! -d /sys/class/net/vlan4040 ]; then
+			ilog "Bringing up VLAN4040 interface..."
+			ilog "$(ip link add link ${OOB_IF} name vlan4040 type vlan id 4040 2>&1)"
+			ilog "$(ip link set dev vlan4040 up 2>&1)"
+		fi
+		while [ "$(cat /sys/class/net/vlan4040/operstate 2> /dev/null)" != "up" ]; do
+			ilog "VLAN4040 status is $(cat /sys/class/net/vlan4040/operstate 2>&1) after $SECONDS sec."
+			if [ $SECONDS -gt $BMC_IP_TIMEOUT ]; then
+				rlog "ERR Failed to bring UP vlan4040"
+				ilog "- ERROR: Failed to bring UP vlan4040 interface after $SECONDS sec. All the BMC related operations will be skipped."
+				skip_bmc
+				return 1
+			fi
+			sleep 1
+		done
+		ilog "VLAN4040 interface is UP."
+		ilog "Running: dhclient -e METRIC=1025 -e IF_METRIC=1025 vlan4040"
+		output=$(dhclient -e METRIC=1025 -e IF_METRIC=1025 vlan4040 2>&1)
 		rc=$?
 		ilog "$output"
+		sleep 5
+		ilog "$(ip addr show vlan4040 2>&1)"
+		if (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+			break
+		fi
 		if [ $rc -ne 0 ]; then
 			ilog "dhclient failed"
 			ilog "Configuring static IP: ${OOB_IP}/${OOB_NETPREFIX} for vlan4040"
 			ip addr add ${OOB_IP}/${OOB_NETPREFIX} brd + dev vlan4040
+			ilog "$(ip addr show vlan4040 2>&1)"
 		fi
-		ip link set dev ${OOB_IF} up
-		ip link set dev vlan4040 up
-		sleep 1
 	done
-	while ! ping -c 3 $BMC_IP; do
-		if [ $SECONDS -gt $BMC_IP_TIMEOUT ]; then
-			rlog "ERR Failed to access BMC"
-			ilog "- ERROR: Failed to access $BMC_IP after $SECONDS sec."
-			skip_bmc
-			return
-		fi
-		sleep 1
-	done
-	ilog "$(ip link show vlan4040)"
 	BMC_LINK_UP="yes"
+	return 0
 }
 
 prepare_sshpass_environment()
@@ -1027,13 +1131,14 @@ wait_bmc_task_complete()
 
 update_bmc_fw()
 {
+	rc=0
 	wait_bmc_task_complete
 	log "Updating BMC firmware"
 	image=$(/bin/ls -1 {/mnt,/}${BMC_PATH}/${bmc_pref}*bmc*{fwpkg,tar} 2> /dev/null | grep -v preboot | tail -1)
 	if [ -z "$image" ]; then
 		ilog "- ERROR: Cannot find BMC firmware image"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	ilog "Found BMC firmware image: $image"
 
@@ -1049,7 +1154,7 @@ update_bmc_fw()
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
 		ilog "- ERROR: Cannot detect included BMC firmware version"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	ilog "Provided BMC firmware version: $BMC_IMAGE_VERSION"
 
@@ -1061,7 +1166,7 @@ update_bmc_fw()
 	if [ -z "$BMC_INSTALLED_VERSION" ]; then
 		ilog "- ERROR: Cannot detect running BMC firmware version"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	ilog "Running BMC firmware version: $BMC_INSTALLED_VERSION"
 
@@ -1070,7 +1175,7 @@ update_bmc_fw()
 			ilog "Installed BMC version is the same as provided. FORCE_BMC_FW_INSTALL is set."
 		else
 			ilog "Installed BMC version is the same as provided. Skipping BMC firmware update."
-			return
+			return 0
 		fi
 	fi
 
@@ -1088,17 +1193,21 @@ update_bmc_fw()
 	BMC_FIRMWARE_UPDATED="yes"
 
 	wait_bmc_task_complete
+	post_bmc_install_message="INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}"
 	if [ "$BMC_REBOOT" != "yes" ]; then
-		log "INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}. BMC restart is required."
+		post_bmc_install_message="${post_bmc_install_message}. BMC restart is required"
 	fi
-
+	log "${post_bmc_install_message}"
 	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
 		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
 	fi
+
+	return $rc
 }
 
 update_cec_fw()
 {
+	rc=0
 	wait_bmc_task_complete
 	log "Updating CEC firmware"
 	image=$(/bin/ls -1 {/mnt,/}${CEC_PATH}/${bmc_pref}*cec*${cec_sfx} 2> /dev/null | tail -1)
@@ -1122,7 +1231,7 @@ update_cec_fw()
 	if [ -z "$CEC_IMAGE_VERSION" ]; then
 		ilog "- ERROR: Cannot detect included CEC firmware version"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	ilog "Provided CEC firmware version: $CEC_IMAGE_VERSION"
 
@@ -1132,7 +1241,7 @@ update_cec_fw()
 	if [ -z "$CEC_INSTALLED_VERSION" ]; then
 		ilog "- ERROR: Cannot detect running CEC firmware version"
 		RC=$((RC+1))
-		return
+		return 1
 	fi
 	ilog "Running CEC firmware version: $CEC_INSTALLED_VERSION"
 
@@ -1141,7 +1250,7 @@ update_cec_fw()
 			ilog "Installed CEC version is the same as provided. FORCE_CEC_INSTALL is set."
 		else
 			ilog "Installed CEC version is the same as provided. Skipping CEC firmware update."
-			return
+			return 0
 		fi
 	fi
 
@@ -1157,7 +1266,7 @@ update_cec_fw()
 		if [ -z "$BMC_INSTALLED_VERSION" ]; then
 			ilog "- ERROR: Cannot detect running BMC firmware version"
 			RC=$((RC+1))
-			return
+			return 1
 		fi
 	fi
 
@@ -1179,6 +1288,7 @@ update_cec_fw()
 			if [ "$status" == "\"The request completed successfully."\" ]; then
 				log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}."
 			else
+				rc=1
 				rlog "ERR Failed to reset CEC"
 				ilog "Failed to reset CEC. Output: $output"
 				log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
@@ -1191,6 +1301,8 @@ update_cec_fw()
 	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
 		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
 	fi
+
+	return $rc
 }
 
 bmc_reboot()
@@ -1210,6 +1322,7 @@ bmc_reboot_from_dpu()
 
 update_dpu_golden_image()
 {
+	rc=0
 	log "Updating DPU Golden Image"
 	image=$(/bin/ls -1 {/mnt,/}${DPU_GI_PATH}/${bmc_pref}*preboot-install.bfb 2> /dev/null | tail -1)
 
@@ -1231,12 +1344,16 @@ update_dpu_golden_image()
 	if [ "$DPU_GI_IMAGE_VERSION" == "$DPU_GI_INSTALLED_VERSION" ]; then
 		ilog "Installed DPU Golden Image version is the same as provided. Skipping DPU Golden Image update."
 	else
-		sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:/tmp/
-		output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -w /tmp/$(basename $image) 2>&1)
+		sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-arm
+		ilog "Copying $image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-arm"
+		sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-arm
+		ilog "Installing DPU Golden Image on the BMC by: dpu_golden_image golden_image_arm -w ${BMC_TMP_DIR}/golden-image-arm/$(basename $image)"
+		output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -w ${BMC_TMP_DIR}/golden-image-arm/$(basename $image) 2>&1)
 		if [ $? -eq 0 ]; then
 			log "DPU Golden Image installed successfully"
 		else
 			log "DPU Golden Image installed failed"
+			rc=1
 		fi
 		ilog "$output"
 	fi
@@ -1244,6 +1361,7 @@ update_dpu_golden_image()
 
 update_nic_firmware_golden_image()
 {
+	rc=0
 	log "Updating NIC firmware Golden Image"
 	image=$(/bin/ls -1 {/mnt,/}${NIC_FW_GI_PATH}/*${dpu_part_number}* 2> /dev/null | tail -1)
 
@@ -1264,17 +1382,67 @@ update_nic_firmware_golden_image()
 
 	if [ "$NIC_GI_IMAGE_VERSION" == "$NIC_GI_INSTALLED_VERSION" ]; then
 		ilog "Installed NIC firmware Golden Image version is the same as provided. Skipping NIC firmware Golden Image update."
-		return
+		return 0
 	fi
 
-	sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:/tmp/
-	output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -w /tmp/$(basename $image) 2>&1)
+	sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-nic
+	sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-nic
+	output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -w ${BMC_TMP_DIR}/golden-image-nic/$(basename $image) 2>&1)
 	if [ $? -eq 0 ]; then
 		log "NIC firmware Golden Image installed successfully"
 	else
 		log "NIC firmware Golden Image installed failed"
+		rc=1
 	fi
 	ilog "$output"
+	return $rc
+}
+
+update_certificates()
+{
+	rc=0
+	log "Updating certificates"
+
+	# Get the number of existing certificates
+	num_certs=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Systems/Bluefield/Oem/Nvidia/SystemConfigProfile/Truststore/NvidiaCertificates | jq '."Members@odata.count"')
+	ilog "Number of existing certificates: $num_certs"
+	if [ $num_certs -gt 0 ]; then
+		ilog "Checking if certificates are already uploaded"
+		uploaded_pem_certs=0
+		cert_ids=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Systems/Bluefield/Oem/Nvidia/SystemConfigProfile/Truststore/NvidiaCertificates | jq '."Members"[] | ."@odata.id"' | tr -d '"')
+		for cert_id in $cert_ids; do
+			curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}${cert_id} | jq '."CertificateType"' | grep -q '"PEM"'
+			if [ $? -eq 0 ]; then
+				uploaded_pem_certs=$((uploaded_pem_certs+1))
+			fi
+		done
+		if [ $uploaded_pem_certs -gt 0 ]; then
+			ilog "Found $uploaded_pem_certs PEM certificates already uploaded"
+			return $rc
+		fi
+	fi
+
+	# Create JSON file with certificates
+	cat << EOF > ${CA_CHAIN_JSON}
+	{
+		"CertificateType": "PEM",
+		"CertificateString": "$(cat ${L2_CERT} ${L1_CERT} | sed ':a;N;$!ba;s/\n/\\n/g')"
+	}
+EOF
+
+	# Upload certificates to BMC
+	ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> -X POST https://${BMC_IP}/redfish/v1/Systems/Bluefield/Oem/Nvidia/SystemConfigProfile/Truststore/NvidiaCertificates -d @${CA_CHAIN_JSON}"
+	output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X POST https://${BMC_IP}/redfish/v1/Systems/Bluefield/Oem/Nvidia/SystemConfigProfile/Truststore/NvidiaCertificates -d @${CA_CHAIN_JSON} 2>&1)
+	status=$(echo $output | jq '."Issuer"."Organization"')
+	if [ "$status" == "\"NVIDIA"\" ]; then
+		log "INFO: Certificates uploaded successfully"
+	else
+		rc=1
+		rlog "ERR Failed to upload certificates"
+		ilog "Failed to upload certificates. Output: $output"
+	fi
+
+	return $rc
 }
 
 bmc_components_update()
@@ -1288,7 +1456,7 @@ bmc_components_update()
 		if [[ -z "$BMC_USER" || -z "$BMC_PASSWORD" ]]; then
 			ilog "BMC_USER and/or BMC_PASSWORD are not defined. Skipping UEFI password change."
 		else
-			create_vlan
+			create_vlan || return
 			change_uefi_password
 		fi
 	fi
@@ -1300,7 +1468,7 @@ bmc_components_update()
 			return
 		else
 			ilog "INFO: Running BMC components update flow"
-			create_vlan
+			create_vlan || return
 			# get_bmc_public_key
 			if [ "$BMC_LINK_UP" == "yes" ]; then
 				if [ ! -z "$NEW_BMC_PASSWORD" ]; then
@@ -1317,6 +1485,7 @@ bmc_components_update()
 					ilog "BMC password has the default value. Changing to the temporary password."
 					if change_bmc_password "$BMC_PASSWORD" "$TMP_BMC_PASSWORD"; then
 						BMC_PASSWORD="$TMP_BMC_PASSWORD"
+						BMC_SSH_PASSWORD="$TMP_BMC_PASSWORD"
 					else
 						skip_bmc
 						return
@@ -1337,6 +1506,10 @@ bmc_components_update()
 
 	else
 		return
+	fi
+
+	if [ "$RESET_BMC_RSHIM_LOG" == "yes" ]; then
+		reset_bmc_rshim_log
 	fi
 
 	if function_exists bmc_custom_action1; then
@@ -1391,6 +1564,20 @@ bmc_components_update()
 	if function_exists bmc_post_nic_fw_gi; then
 		log "INFO: Running bmc_post_nic_fw_gi from bf.cfg"
 		bmc_post_nic_fw_gi
+	fi
+
+	if function_exists bmc_pre_certificates; then
+		log "INFO: Running bmc_pre_certificates from bf.cfg"
+		bmc_pre_certificates
+	fi
+
+	if [ "$UPDATE_CERTIFICATES" == "yes"  ]; then
+		update_certificates
+	fi
+
+	if function_exists bmc_post_certificates; then
+		log "INFO: Running bmc_post_certificates from bf.cfg"
+		bmc_post_certificates
 	fi
 
 	if [[ "X${BMC_REBOOT}" == "Xyes" && "X${BMC_REBOOT_CONFIG}" == "Xyes" && "${BMC_CONFIG_UPDATED}" == "yes" ]]; then
@@ -1496,7 +1683,7 @@ CMDLINE:
 $(cat /proc/cmdline)
 
 PARTED:
-$(parted -l -s)
+$(parted -l -s 2> /dev/null)
 
 LSPCI:
 $(lspci)
