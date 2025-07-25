@@ -226,7 +226,7 @@ def fw_activate_bfb(filename, now):
             cd initramfs; \
             gzip -d < ../dump-initramfs-v0 | cpio -id; \
             ln -snf `pwd`/ubuntu /ubuntu; \
-            /ubuntu/install.sh; \
+            ERASE_EMMC=no ERASE_SSD=no ERASE_PARTITIONS=no /ubuntu/install.sh; \
             /bin/rm -f /ubuntu".format(d=dirpath, f=filename)
     rc, output = get_status_output(cmd, False)
     shutil.rmtree(dirpath)
