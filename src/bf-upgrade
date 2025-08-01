@@ -330,14 +330,20 @@ else #BUNDLE BFB
 			fi
 		fi
 
-		BMC_PATH=${BMC_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
-		BMC_IMAGE=${BMC_IMAGE:-$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)}
-		CEC_PATH=${CEC_PATH:-$(readlink -f ./lib/firmware/mellanox/cec/)}
-		CEC_IMAGE=${CEC_IMAGE:-$(/bin/ls ${CEC_PATH}/bf3-cec*.fwpkg 2> /dev/null)}
-		DPU_GI_PATH=${DPU_GI_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
-		DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)}
-		NIC_FW_GI_PATH=${NIC_FW_GI_PATH:-$(readlink -f ./lib/firmware/mellanox/bmc/)}
-		NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-$(/bin/ls ${NIC_FW_GI_PATH}/fw*bfb 2> /dev/null)}
+		if [ -d ./lib/firmware/mellanox/bmc/ ]; then
+			BMC_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+		fi
+		BMC_IMAGE=$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)
+		if [ -d ./lib/firmware/mellanox/cec/ ]; then
+			CEC_PATH=$(readlink -f ./lib/firmware/mellanox/cec/)
+		fi
+		CEC_IMAGE=$(/bin/ls ${CEC_PATH}/bf3-cec*.fwpkg 2> /dev/null)
+		if [ -d ./lib/firmware/mellanox/bmc/ ]; then
+			DPU_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+			NIC_FW_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+		fi
+		DPU_GOLDEN_IMAGE=$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)
+		NIC_FW_GOLDEN_IMAGE=$(/bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*bfb 2> /dev/null)
 
 		bmc_components_update
 
@@ -353,7 +359,6 @@ fi
 
 cd ${WDIR}
 /bin/rm -rf dump-*
-cd
 
 if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
 	/bin/rm -rf ${WDIR}
