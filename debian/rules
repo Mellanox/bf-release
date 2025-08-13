@@ -19,6 +19,7 @@ ARCH := aarch64
 %:
 	dh $@
 
+OVS_CONF_FILE="debian/$(pname)/etc/mellanox/mlnx-ovs.conf"
 override_dh_auto_install:
 
 	dh_installdirs -p$(pname)  etc
@@ -86,6 +87,11 @@ endif
 	dh_installdirs -p$(pname)  etc/mellanox
 	install -m 0644 src/mlnx-bf.conf	debian/$(pname)/etc/mellanox
 	install -m 0644 src/mlnx-ovs.conf	debian/$(pname)/etc/mellanox
+ifneq (,$(filter $(DIST_NAME)-$(DIST_VERSION),Ubuntu-22.04 Ubuntu-24.04))
+	echo 'OVS_DOCA="no"' >> "$(OVS_CONF_FILE)"
+	echo 'OVS_DEFAULT_HUGEPAGE_SIZE=2048' >> "$(OVS_CONF_FILE)"
+	echo 'OVS_DEFAULT_HUGEPAGE_NUM=512'  >> "$(OVS_CONF_FILE)"
+endif
 
 	dh_installdirs -p$(pname)  etc/acpi/actions
 	install -m 0755 src/rebootcontrol	debian/$(pname)/etc/acpi/actions
