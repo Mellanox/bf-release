@@ -1,5 +1,26 @@
 #!/usr/bin/env bash
 
+# Parse command line arguments
+OUTPUT_FORMAT="yaml"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --json)
+            OUTPUT_FORMAT="json"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--json]"
+            echo "  --json    Output in JSON format (default is YAML-like format)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Use --help for usage information" >&2
+            exit 1
+            ;;
+    esac
+done
+
 BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
 
 get_version()
@@ -87,106 +108,213 @@ get_cec_fw()
 	fi
 }
 
-cat << EOF
+# JSON utility functions
+json_escape() {
+    echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n'
+}
+
+json_add_item() {
+    local key="$1"
+    local value="$2"
+    local is_last="$3"
+    
+    if [ -n "$value" ] && [ "$value" != " " ]; then
+        if [ "$is_last" = "true" ]; then
+            echo "    \"$key\": \"$(json_escape "$value")\""
+        else
+            echo "    \"$key\": \"$(json_escape "$value")\","
+        fi
+    elif [ "$is_last" = "true" ]; then
+        echo "    \"$key\": null"
+    else
+        echo "    \"$key\": null,"
+    fi
+}
+
+json_add_array() {
+    local key="$1"
+    local items="$2"
+    local is_last="$3"
+    
+    if [ "$is_last" = "true" ]; then
+        echo "    \"$key\": ["
+    else
+        echo "    \"$key\": ["
+    fi
+    
+    if [ -n "$items" ]; then
+        echo "$items" | while IFS= read -r line; do
+            if [ -n "$line" ]; then
+                # Remove leading "- " from YAML format
+                clean_line=$(echo "$line" | sed 's/^- //')
+                echo "      \"$(json_escape "$clean_line")\","
+            fi
+        done | sed '$s/,$//'  # Remove trailing comma from last item
+    fi
+    
+    if [ "$is_last" = "true" ]; then
+        echo "    ]"
+    else
+        echo "    ],"
+    fi
+}
+
+# Collect all version information
+DPDK_VERSION=$(/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3)
+KERNEL_VERSION=$(uname -r)
+MFT_VERSION=$(get_version_and_release mft)
+MSTFLINT_VERSION=$(get_version_and_release mstflint)
+BMC_FW=$(get_bmc_fw)
+CEC_FW=$(get_cec_fw)
+
+# Collect storage packages
+if [ "$DEV_TYPE" != "BlueField2" ]; then
+    STORAGE_PACKAGES=$(
+        echo "- $(get_version mlnx-libsnap)"
+        echo "- $(get_version spdk)"
+        echo "- $(get_version virtio-net-controller)"
+    )
+else
+    STORAGE_PACKAGES=$(
+        echo "- $(get_version mlnx-libsnap)"
+        echo "- $(get_version mlnx-snap)"
+        echo "- $(get_version spdk)"
+        echo "- $(get_version virtio-net-controller)"
+    )
+fi
+
+# Collect DOCA packages
+if [ -e /etc/debian_version ]; then
+    DOCA_PACKAGES=$(
+        for doca in $(dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n); do
+            echo "- $(get_version $doca)"
+        done
+        echo "- collectx-clxapi: $(get_version collectx-clxapi)"
+    )
+else
+    DOCA_PACKAGES=$(
+        for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do
+            echo "- $(get_version $doca)"
+        done
+        echo "- collectx-clxapi: $(get_version collectx-clxapi)"
+    )
+fi
+
+# Collect FlexIO packages
+if [ -e /etc/debian_version ]; then
+    FLEXIO_PACKAGES=$(
+        for flexio in $(dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n); do
+            echo "- $(get_version $flexio)"
+        done
+    )
+else
+    FLEXIO_PACKAGES=$(
+        for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do
+            echo "- $(get_version $flexio)"
+        done
+    )
+fi
+
+# Collect SoC Platform packages
+if [ -e /etc/debian_version ]; then
+    SOC_PACKAGES=$(
+        for package in $(dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n); do
+            echo "- $(get_version $package)"
+        done
+    )
+else
+    SOC_PACKAGES=$(
+        for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do
+            echo "- $(get_version $package)"
+        done
+    )
+fi
+
+# Collect OFED packages if not in-box
+if [ "$OFED" != "in-box" ]; then
+    OFED_PACKAGES=$(print_ofed)
+fi
+
+# Output in the requested format
+if [ "$OUTPUT_FORMAT" = "json" ]; then
+    echo "{"
+    echo "  \"firmware\": {"
+    json_add_item "ATF" "$BUILD_ATF" "false"
+    json_add_item "UEFI" "$BUILD_UEFI" "false"
+    json_add_item "BSP" "$BUILD_BSP" "false"
+    json_add_item "NIC_Firmware" "$NIC_FW" "false"
+    json_add_item "BMC_Firmware" "$BMC_FW" "false"
+    json_add_item "CEC_Firmware" "$CEC_FW" "true"
+    echo "  },"
+    echo "  \"drivers\": {"
+    json_add_item "mlnx_dpdk" "$DPDK_VERSION" "false"
+    json_add_item "Kernel" "$KERNEL_VERSION" "true"
+    echo "  },"
+    echo "  \"tools\": {"
+    json_add_item "MFT" "$MFT_VERSION" "false"
+    if [ -n "$MLX_REGEX" ]; then
+        json_add_item "mstflint" "$MSTFLINT_VERSION" "false"
+        json_add_item "mlx_regex" "$MLX_REGEX" "true"
+    else
+        json_add_item "mstflint" "$MSTFLINT_VERSION" "true"
+    fi
+    echo "  },"
+    json_add_array "storage" "$STORAGE_PACKAGES" "false"
+    json_add_array "doca" "$DOCA_PACKAGES" "false"
+    json_add_array "flexio" "$FLEXIO_PACKAGES" "false"
+    if [ "$OFED" != "in-box" ]; then
+        json_add_array "soc_platform" "$SOC_PACKAGES" "false"
+        json_add_array "ofed" "$OFED_PACKAGES" "true"
+    else
+        json_add_array "soc_platform" "$SOC_PACKAGES" "true"
+    fi
+    echo "}"
+else
+    # Original YAML-like format
+    cat << EOF
 
 Firmware:
 - ATF: $BUILD_ATF
 - UEFI: $BUILD_UEFI
 - BSP: $BUILD_BSP
 - NIC Firmware: $NIC_FW
-- BMC Firmware: `get_bmc_fw`
-- CEC Firmware: `get_cec_fw`
+- BMC Firmware: $BMC_FW
+- CEC Firmware: $CEC_FW
 
 Drivers:
-- mlnx-dpdk:`/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3`
-- Kernel: $(uname -r)
+- mlnx-dpdk:$DPDK_VERSION
+- Kernel: $KERNEL_VERSION
 
 Tools:
-- MFT: `get_version_and_release mft`
-- mstflint: `get_version_and_release mstflint`
+- MFT: $MFT_VERSION
+- mstflint: $MSTFLINT_VERSION
 EOF
-if [ -n "$MLX_REGEX" ]; then
-    echo "- mlx-regex: ${MLX_REGEX}"
-fi
+    if [ -n "$MLX_REGEX" ]; then
+        echo "- mlx-regex: $MLX_REGEX"
+    fi
 
-if ( grep -q "DISTRIB_ID=Ubuntu" /etc/lsb-release > /dev/null 2>&1 ); then
-cat << EOF
-EOF
-fi
-
-if [ "$DEV_TYPE" != "BlueField2" ]; then 
-cat << EOF
+    cat << EOF
 
 Storage:
-- `get_version mlnx-libsnap`
-- `get_version spdk`
-- `get_version virtio-net-controller`
-EOF
-else
-cat << EOF
-
-Storage:
-- `get_version mlnx-libsnap`
-- `get_version mlnx-snap`
-- `get_version spdk`
-- `get_version virtio-net-controller`
-EOF
-fi
-
-if [ -e /etc/debian_version ]; then
-
-cat << EOF
+$STORAGE_PACKAGES
 
 DOCA:
-$(for doca in `dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n`; do echo "- `get_version $doca`";done)
-- collectx-clxapi: `get_version collectx-clxapi`
-EOF
-else
-cat << EOF
-
-DOCA:
-$(for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do echo "- `get_version $doca`";done)
-- collectx-clxapi: `get_version collectx-clxapi`
-EOF
-fi
-
-if [ -e /etc/debian_version ]; then
-
-cat << EOF
+$DOCA_PACKAGES
 
 FlexIO:
-$(for flexio in `dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n`; do echo "- `get_version $flexio`";done)
-EOF
-else
-cat << EOF
-
-FlexIO:
-$(for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do echo "- `get_version $flexio`";done)
-EOF
-fi
-
-
-if [ -e /etc/debian_version ]; then
-
-cat << EOF
+$FLEXIO_PACKAGES
 
 SoC Platform:
-$(for package in `dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n`; do echo "- `get_version $package`";done)
+$SOC_PACKAGES
 EOF
-else
-cat << EOF
 
-SoC Platform:
-$(for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do echo "- `get_version $package`";done)
-EOF
-fi
-
-if [ "$OFED" != "in-box" ]; then
-cat << EOF
+    if [ "$OFED" != "in-box" ]; then
+        cat << EOF
 
 OFED:
-`print_ofed`
+$OFED_PACKAGES
 
 EOF
+    fi
 fi
 
