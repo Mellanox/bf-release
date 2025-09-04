@@ -70,6 +70,7 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
+install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 install -d %{buildroot}/etc/sysconfig/network-scripts
 
 # Network configuration
@@ -130,6 +131,13 @@ cat > %{buildroot}/etc/systemd/system/network.service.d/override.conf << EOF
 TimeoutSec=%{NETWORKING_TIMEOUT}sec
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/network.service.d/override.conf
+
+cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
+[Unit]
+After=openibd.service
+Requires=openibd.service
+EOF
+chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
 
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
@@ -341,6 +349,7 @@ fi
 /etc/sysconfig/network-scripts/*
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
+/etc/systemd/system/openvswitch.service.d/override.conf
 /etc/NetworkManager/conf.d/*
 
 %dir /etc/mellanox
