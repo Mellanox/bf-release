@@ -86,6 +86,9 @@ endif
 	install -m 0644 src/40-mlnx.conf		debian/$(pname)/etc/NetworkManager/conf.d/
 	install -m 0644 src/45-mlnx-dns.conf	debian/$(pname)/etc/NetworkManager/conf.d/
 
+	dh_installdirs -p$(pname)  etc/lldpd.d
+	install -m 0644 src/lldpd/lldp-interfaces.conf debian/$(pname)/etc/lldpd.d/
+
 	dh_installdirs -p$(pname)  etc/mellanox
 	install -m 0644 src/mlnx-bf.conf	debian/$(pname)/etc/mellanox
 	install -m 0644 src/mlnx-ovs.conf	debian/$(pname)/etc/mellanox
