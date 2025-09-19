@@ -131,11 +131,19 @@ TimeoutSec=%{NETWORKING_TIMEOUT}sec
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/network.service.d/override.conf
 
+%if ! 0%{?oraclelinux}
 cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
 [Unit]
 After=openibd.service
 Requires=openibd.service
 EOF
+%else
+cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
+[Unit]
+After=rdma-load-modules@infiniband.service
+Requires=rdma-load-modules@infiniband.service
+EOF
+%endif
 chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
 
 install -d %{buildroot}/etc/NetworkManager/conf.d
