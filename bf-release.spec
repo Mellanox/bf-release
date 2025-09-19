@@ -150,6 +150,15 @@ install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
 
+%if 0%{?oraclelinux}
+install -d %{buildroot}/etc/dracut.conf.d
+cat > %{buildroot}/etc/dracut.conf.d/mlnx.conf << EOF
+omit_drivers+=" mlx5_core mlx5_ib ib_umad "
+omit_dracutmodules+=" rdma rdma-load-modules@infiniband.service rdma-load-modules@rdma.service rdma-load-modules@roce.service "
+EOF
+chmod 644 %{buildroot}/etc/dracut.conf.d/mlnx.conf
+%endif
+
 install -d %{buildroot}/etc/mellanox
 install -m 0644 src/mlnx-bf.conf	%{buildroot}/etc/mellanox
 install -m 0644 src/mlnx-ovs.conf	%{buildroot}/etc/mellanox
@@ -343,6 +352,9 @@ fi
 /etc/systemd/system/network.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
 /etc/NetworkManager/conf.d/*
+%if 0%{?oraclelinux}
+/etc/dracut.conf.d/mlnx.conf
+%endif
 
 %dir /etc/mellanox
 /etc/mellanox/*
