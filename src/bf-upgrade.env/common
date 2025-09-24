@@ -156,7 +156,11 @@ update_progress()
 
 	step_str=$(step2str $step)
 	printf "BFB-Installer: Installing %s %s, total %d%% complete" "$step_str" "$status_str" $percentage
+	printf "\n"
 	ilog "BFB-Installer: Installing ${step_str} ${status_str}, total ${percentage}% complete"
+	if function_exists set_upgrade_progress; then
+		set_upgrade_progress $percentage
+	fi
 }
 
 save_log()

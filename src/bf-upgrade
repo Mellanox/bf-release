@@ -78,6 +78,7 @@ unmount_partitions()
     done
 }
 
+RC=0
 # Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
 INITIAL_DATA_RECEIVE_TIMEOUT=20
@@ -85,11 +86,19 @@ INITIAL_DATA_RECEIVE_TIMEOUT=20
 logfile=dpu.installation.log
 LOG=/var/log/$logfile
 
-# Source a configuration if exists.
-[ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
+# flow: upgrade, activate, cancel, compatibility
+# compatibility: compatibility flow - to support old infrastructure
+COMPATIBILITY_FLOW=0
+UPGRADE_FLOW=0
+ACTIVATE_FLOW=0
+CANCEL_FLOW=0
 
 SCRIPTS_DIR=$(dirname $0)
 
+. ${SCRIPTS_DIR}/bf-upgrade.env/rshim
+
+# Source a configuration if exists.
+[ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
 
 [ ! -e /proc/acpi/button/lid/LID/state ] && exit 0
 
@@ -103,45 +112,41 @@ fi
 state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
 [ "$state" != "closed" ] && exit 0
 
-# Add a delay for the boot-fifo to be filled.
-sleep $IDLE_MAX
+TMPDIR=${TMPDIR:-"/tmp"}
+WDIR=${WDIR:-"$(mktemp -d ${TMPDIR}/bfb.XXXXXX)"}
+BFB_DIR=${TMPDIR}/bfb
 
-WDIR=${WDIR:-"$(mktemp -d /tmp/bfb.XXXXXX)"}
-
-# Example code to fetch the upgrade bfb.
-# !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
-UPGRADE_IMAGE=${WDIR}/upgrade.bfb
-rm -f ${UPGRADE_IMAGE}* 2>/dev/null
-
-idle_cnt=0
-data_receive_timeout=$INITIAL_DATA_RECEIVE_TIMEOUT
-while [ $idle_cnt -lt $data_receive_timeout ]; do
-  cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
-  filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
-  if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
-    # Done if no more data in 5 seconds.
-    idle_cnt=$((idle_cnt + 1))
-    sleep 1
-  else
-    idle_cnt=0
-	data_receive_timeout=$IDLE_MAX
-    cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
-  fi
-done
-
-/bin/rm -f ${UPGRADE_IMAGE}.tmp
-cd ${WDIR}
-/bin/rm -f dump-*
-
-if [ ! -s "${UPGRADE_IMAGE}" ]; then
-	log "Failed to receive a BFB"
-	exit 1
+if [ -e /tmp/update_in_progress ]; then
+	ilog "Update in progress. Awaiting for activation."
+	/bin/rm -rf /tmp/update_in_progress
+else
+	/bin/rm -rf ${BFB_DIR}/* ${BFB_DIR}
+	/bin/ln -sf ${WDIR} ${BFB_DIR}
 fi
 
-log "Extracting BFB ${UPGRADE_IMAGE}"
-mlx-mkbfb -x ${UPGRADE_IMAGE}
-rm -f ${UPGRADE_IMAGE}
+# Read 8 bytes starting from the 5th byte (offset 4)
+SP2=$(read_SP2)
+ilog "UINT64 value starting from the 5th byte (little-endian): $SP2"
 
+if is_mode_upgrade; then
+	ilog "RSSHIM SP2 is $SP2: Running Upgrade flow"
+	UPGRADE_FLOW=1
+	touch /tmp/update_in_progress
+fi
+if is_mode_activate; then
+	ilog "RSSHIM SP2 is $SP2: Running ActivateFirmware flow"
+	ACTIVATE_FLOW=1
+fi
+if is_mode_cancel; then
+	ilog "RSSHIM SP2 is $SP2: Running Cancel flow"
+	CANCEL_FLOW=1
+fi
+if [ $UPGRADE_FLOW -eq 0 ] && [ $ACTIVATE_FLOW -eq 0 ] && [ $CANCEL_FLOW -eq 0 ]; then
+	ilog "RSSHIM SP2 is $SP2: Running Compatibility flow"
+	COMPATIBILITY_FLOW=1
+fi
+
+# IS_BUNDLE is set to 1 if the BFB is a bf-bundle or bf-fwbundle (non-flat) BFB
 IS_BUNDLE=0
 UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
 UPDATE_DPU_OS=${UPDATE_DPU_OS:-"no"}
@@ -153,19 +158,61 @@ WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
 RUNTIME_UPGRADE="yes"
 USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
 
-# PLDM BFB format:
-# dump-boot-args-v0 - bf.cfg
-# dump-capsule-v0 - BSP upgrade capsule
-# dump-image-v0 - BMC firmware image
-# dump-upgrade-image-v0 - CEC upgrade image
-# dump-ramdisk-v0 - NIC firmware Golden Image
-# dump-nicfw-v0 - NIC firmware
+if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
+	# Add a delay for the boot-fifo to be filled.
+	sleep $IDLE_MAX
 
-# BUNDLE BFB format:
-# dump-boot-args-v0 - bf.cfg
-# dump-initramfs-v0 - BFB installation environment that contains all the components (BMC, CEC, NIC FW, etc.)
-# dump-image-v0 - Linux kernel
+	# Example code to fetch the upgrade bfb.
+	# !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
+	UPGRADE_IMAGE=${WDIR}/upgrade.bfb
+	rm -f ${UPGRADE_IMAGE}* 2>/dev/null
 
+	idle_cnt=0
+	data_receive_timeout=$INITIAL_DATA_RECEIVE_TIMEOUT
+	while [ $idle_cnt -lt $data_receive_timeout ]; do
+		cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
+		[ -e ${UPGRADE_IMAGE}.tmp ] && filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
+		if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
+			# Done if no more data in 5 seconds.
+			idle_cnt=$((idle_cnt + 1))
+			sleep 1
+		else
+			idle_cnt=0
+			data_receive_timeout=$IDLE_MAX
+			cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
+		fi
+	done
+
+	/bin/rm -f ${UPGRADE_IMAGE}.tmp
+	cd ${WDIR}
+	/bin/rm -f dump-*
+
+	if [ ! -s "${UPGRADE_IMAGE}" ]; then
+		log "ERR Failed to receive a BFB"
+		/bin/rm -rf ${WDIR} ${BFB_DIR} /tmp/update_in_progress
+		exit 1
+	fi
+
+	log "Extracting BFB ${UPGRADE_IMAGE}"
+	mlx-mkbfb -x ${UPGRADE_IMAGE}
+	rm -f ${UPGRADE_IMAGE}
+
+	# PLDM BFB format:
+	# dump-boot-args-v0 - bf.cfg
+	# dump-capsule-v0 - BSP upgrade capsule
+	# dump-image-v0 - BMC firmware image
+	# dump-upgrade-image-v0 - CEC upgrade image
+	# dump-ramdisk-v0 - NIC firmware Golden Image
+	# dump-dpu-gi-v0 - DPU Golden Image
+	# dump-nicfw-v0 - NIC firmware
+
+	# BUNDLE BFB format:
+	# dump-boot-args-v0 - bf.cfg
+	# dump-initramfs-v0 - BFB installation environment that contains all the components (BMC, CEC, NIC FW, etc.)
+	# dump-image-v0 - Linux kernel
+fi # compatibility flow or upgrade flow - finish reading BFB
+
+cd ${BFB_DIR}
 if ( bash -n dump-boot-args-v0 ); then
 	if (grep -qw "initrd=initramfsroot" dump-boot-args-v0); then
 		IS_BUNDLE=1
@@ -211,83 +258,105 @@ if [ -n "$BMC_IP" ]; then
 fi
 
 if [ $IS_BUNDLE -eq 0 ]; then
-
-	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-		if [ -e dump-capsule-v0 ]; then
-			if ! function_exists update_atf_uefi; then
-				log  "ERROR: BSP upgrade function does not exist"
+	# PLDM BFB or Flat fwbundle BFB
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+			if [ -e dump-capsule-v0 ]; then
+				if ! function_exists update_atf_uefi; then
+					log  "ERROR: BSP upgrade function does not exist"
+					UPDATE_ATF_UEFI="no"
+				fi
+			else
+				log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
 				UPDATE_ATF_UEFI="no"
 			fi
-		else
-			log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
-			UPDATE_ATF_UEFI="no"
 		fi
 	fi
 
-	if ! function_exists bmc_components_update; then
-		log  "ERROR: BMC upgrade function does not exist"
-		skip_bmc 0
-	fi
-
-	if [ "$UPDATE_BMC_FW" == "yes" ]; then
-		if [ -e dump-image-v0 ]; then
-			BMC_IMAGE=$(readlink -f dump-image-v0)
-		else
-			log "ERROR: BMC firmware dump-image-v0 was not found"
-			UPDATE_BMC_FW="no"
+	if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		if ! function_exists bmc_components_update; then
+			log  "ERROR: BMC upgrade function does not exist"
+			skip_bmc 0
 		fi
-	fi
 
-	if [ "$UPDATE_CEC_FW" == "yes" ]; then
-		if [ -e dump-upgrade-image-v0 ]; then
-			CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
-		else
-			log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
-			UPDATE_CEC_FW="no"
-		fi
-	fi
-
-	UPDATE_DPU_GOLDEN_IMAGE="no"
-
-	if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
-		if [ -e dump-ramdisk-v0 ]; then
-			NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
-		else
-			# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
-			UPDATE_NIC_FW_GOLDEN_IMAGE="no"
-		fi
-	fi
-
-	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-		if [ -e dump-nicfw-v0 ]; then
-			if function_exists update_nic_firmware; then
-				NIC_FW_BIN=$(readlink -f dump-nicfw-v0)
+		if [ "$UPDATE_BMC_FW" == "yes" ]; then
+			if [ -e dump-image-v0 ]; then
+				BMC_IMAGE=$(readlink -f dump-image-v0)
 			else
-				log  "ERROR: NIC Firmware upgrade function does not exist"
+				log "ERROR: BMC firmware dump-image-v0 was not found"
+				UPDATE_BMC_FW="no"
+			fi
+		fi
+
+		if [ "$UPDATE_CEC_FW" == "yes" ]; then
+			if [ -e dump-upgrade-image-v0 ]; then
+				CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
+			else
+				log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
+				UPDATE_CEC_FW="no"
+			fi
+		fi
+
+		if [ "$UPDATE_DPU_GOLDEN_IMAGE" == "yes" ]; then
+			if [ -e dump-dpu-gi-v0 ]; then
+				DPU_GOLDEN_IMAGE=$(readlink -f dump-dpu-gi-v0)
+			else
+				log "ERROR: DPU Golden Image dump-dpu-gi-v0 was not found"
+				UPDATE_DPU_GOLDEN_IMAGE="no"
+			fi
+		fi
+
+		if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
+			if [ -e dump-ramdisk-v0 ]; then
+				NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
+			else
+				# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
+				UPDATE_NIC_FW_GOLDEN_IMAGE="no"
+			fi
+		fi
+
+		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+			if [ -e dump-nicfw-v0 ]; then
+				if function_exists update_nic_firmware; then
+					NIC_FW_BIN=$(readlink -f dump-nicfw-v0)
+				else
+					log  "ERROR: NIC Firmware upgrade function does not exist"
+					WITH_NIC_FW_UPDATE="no"
+				fi
+			else
+				# log "ERROR: NIC firmware binary dump-nicfw-v0 was not found"
 				WITH_NIC_FW_UPDATE="no"
 			fi
-		else
-			# log "ERROR: NIC firmware binary dump-nicfw-v0 was not found"
-			WITH_NIC_FW_UPDATE="no"
+		fi
+
+		calculate_total_weight
+		update_progress install_setup 0
+	fi # compatibility flow or upgrade flow - finish updating components
+
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		# Update components
+		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+			if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+				update_atf_uefi $(readlink -f dump-capsule-v0)
+				update_progress atf_uefi $?
+			fi
 		fi
 	fi
 
-	calculate_total_weight
-	update_progress install_setup 0
+	if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		bmc_components_update
 
-	# Update components
-	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-		update_atf_uefi $(readlink -f dump-capsule-v0)
-		update_progress atf_uefi $?
+		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+			update_nic_firmware
+			update_progress nic_firmware $?
+		fi
 	fi
 
-	bmc_components_update
-
-	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-		update_nic_firmware
-		update_progress nic_firmware $?
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		bmc_activate
 	fi
-else #BUNDLE BFB
+else
+	#BUNDLE BFB that contains Linux kernel and initramfs
 	if [ ! -e dump-initramfs-v0 ]; then
 		log "ERROR: BFB's initramfs dump-initramfs-v0 was not found"
 		exit 1
@@ -323,47 +392,64 @@ else #BUNDLE BFB
 		update_progress install_setup 0
 
 		# Update components
-		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-			if [ -e ./lib/firmware/mellanox/boot/capsule/boot_update2.cap ]; then
-				update_atf_uefi $(readlink -f ./lib/firmware/mellanox/boot/capsule/boot_update2.cap)
-				update_progress atf_uefi $?
+		if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+			if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+				if [ -e ./lib/firmware/mellanox/boot/capsule/boot_update2.cap ]; then
+					update_atf_uefi $(readlink -f ./lib/firmware/mellanox/boot/capsule/boot_update2.cap)
+				fi
 			fi
 		fi
 
-		if [ -d ./lib/firmware/mellanox/bmc/ ]; then
-			BMC_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+		if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+			update_progress atf_uefi 0
 		fi
-		BMC_IMAGE=$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)
-		if [ -d ./lib/firmware/mellanox/cec/ ]; then
-			CEC_PATH=$(readlink -f ./lib/firmware/mellanox/cec/)
-		fi
-		CEC_IMAGE=$(/bin/ls ${CEC_PATH}/bf3-cec*.fwpkg 2> /dev/null)
-		if [ -d ./lib/firmware/mellanox/bmc/ ]; then
-			DPU_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
-			NIC_FW_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
-		fi
-		DPU_GOLDEN_IMAGE=$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)
-		NIC_FW_GOLDEN_IMAGE=$(/bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*bfb 2> /dev/null)
+		if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+			if [ -d ./lib/firmware/mellanox/bmc/ ]; then
+				BMC_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+			fi
+			BMC_IMAGE=$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)
+			if [ -d ./lib/firmware/mellanox/cec/ ]; then
+				CEC_PATH=$(readlink -f ./lib/firmware/mellanox/cec/)
+			fi
+			CEC_IMAGE=$(/bin/ls ${CEC_PATH}/bf3-cec*.fwpkg 2> /dev/null)
+			if [ -d ./lib/firmware/mellanox/bmc/ ]; then
+				DPU_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+				NIC_FW_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
+			fi
+			DPU_GOLDEN_IMAGE=$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)
+			NIC_FW_GOLDEN_IMAGE=$(/bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*bfb 2> /dev/null)
 
-		bmc_components_update
+			bmc_components_update
 
+			if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
+				if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+					update_nic_firmware
+					update_progress nic_firmware $?
+				fi
+			fi
+			cat /tmp/*log >> /var/log/bf-upgrade.log 2> /dev/null || true
+		fi
 		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-			update_nic_firmware
-			update_progress nic_firmware $?
-			reset_nic_firmware
+			if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+				reset_nic_firmware
+			fi
 		fi
-		cat /tmp/*log >> /var/log/bf-upgrade.log 2> /dev/null || true
 	fi
 	cd ..
 fi
 
-cd ${WDIR}
-/bin/rm -rf dump-*
+# Keep the WDIR for activate
+# During the activate flow, the WDIR is used to run the ATF/UEFI upgrade
+if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 || $RC -ne 0 ]]; then
+	cd ${WDIR}
+	/bin/rm -rf dump-*
+	cd ..
 
-if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
-	/bin/rm -rf ${WDIR}
-else
-	ilog "Failed to unmount ${WDIR}/initramfs"
+	if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
+		/bin/rm -rf ${WDIR} ${BFB_DIR} /tmp/update_in_progress
+	else
+		ilog "Failed to unmount ${WDIR}/initramfs"
+	fi
 fi
 
 log "Runtime upgrade finished"

@@ -777,3 +777,14 @@ bmc_components_update()
 		post_bmc_components_update
 	fi
 }
+
+bmc_activate()
+{
+	output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -X POST https://$BMC_IP/redfish/v1/UpdateService/Actions/Oem/NvidiaUpdateService.ActivateFirmware)
+	status=$(echo $output | jq '."@Message.ExtendedInfo"[0].Message')
+	if [ "$status" != "\"The request completed successfully."\" ]; then
+		rlog "ERR Failed to activate BMC firmware."
+		ilog "Failed to activate BMC firmware. Output: $output"
+	fi
+	ilog "$output"
+}

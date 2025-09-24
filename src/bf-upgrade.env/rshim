@@ -1,0 +1,94 @@
+# RSHIN Scratchpad
+read_RshimSP2_path=/sys/firmware/efi/efivars/RshimSP2R-f3ce977e-c17f-493e-a3cd-5731d386e505
+write_RshimSP2_path=/sys/firmware/efi/efivars/RshimSP2W-f3ce977e-c17f-493e-a3cd-5731d386e505
+
+status_clear_mask=$(( ~( (1 << 11) | (1 << 12) ) ))
+progress_clear_mask=$(( ~( (1 << 13) | (1 << 14) | (1 << 15)) ))
+
+
+# Function to read 8 bytes from a specific offset and convert to UINT64 little-endian
+read_SP2() {
+    # Read 8 bytes starting from the specified offset
+    bytes=$(dd if="$read_RshimSP2_path" bs=1 skip=4 count=8 2>/dev/null | xxd -p -c 8)
+
+    # Convert the bytes from little-endian to UINT64
+    local hex=""
+    for (( i=${#bytes}-2; i>=0; i-=2 )); do
+        hex+="${bytes:$i:2}"
+    done
+
+    # Convert hex to decimal
+    echo "$((16#$hex))"
+}
+
+# Function to write a UINT64 value with a specific prefix to a file
+write_uint64_with_prefix() {
+    local value="$1"
+    local file=/tmp/output.bin
+
+    echo $value
+    # Prefix in hexadecimal
+    local prefix="\x06\x00\x00\x00"
+    # Convert the UINT64 value to little-endian hexadecimal format
+    local hex_value=$(printf "%016x" $value | sed 's/../& /g' | awk '{for(i=NF;i>=1;i--) printf "%s", $i; print ""}')
+
+    # Convert the little-endian hexadecimal string to binary format
+    local binary_value=$(printf "%s" "$hex_value" | xxd -r -p)
+
+    # Write the prefix and the binary value to the file
+    printf "%s" "$prefix" > "$file"
+    printf "%s" "$binary_value" >> "$file"
+    cp $file $write_RshimSP2_path
+}
+
+is_mode_upgrade() {
+    # SP2.BIT2
+    if (( ($SP2 & 4 ) == 4 )); then
+        return 0;
+    else
+        return 1;
+    fi
+}
+
+is_mode_activate() {
+    # SP2.BIT6
+    if (( ($SP2 & 64 ) == 64 )); then
+        return 0;
+    else
+        return 1;
+    fi
+}
+
+is_mode_cancel() {
+    # SP2.BIT7
+    if (( ($SP2 & 128) == 128)); then
+        return 0;
+    else
+        return 1;
+    fi
+}
+
+set_status_idle() {
+    # SP2.BIT11-12
+    local result=$(( SP2 & status_clear_mask ))
+    echo "set_status"
+    echo "$result"
+    write_uint64_with_prefix "$result"
+}
+
+set_upgrade_progress() {
+    # bits 13, 14, 15
+    # b000 - 0%, b001 - 20%, b010 - 40%, b011 - 60%, b100 - 80%, b101 - 100%
+    local percent
+    SP2=$(read_SP2)
+    local result=$(( SP2 & progress_clear_mask ))
+    if [ $1 -lt 100 ]; then
+        percent=$(( $1 / 20 ))
+        [ $percent -lt 0 ] && percent=0
+    else
+        percent=5
+    fi
+
+    result=$(( result | (percent << 13) ))
+    write_uint64_with_prefix "$result"
+}
