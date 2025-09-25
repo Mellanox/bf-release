@@ -170,16 +170,20 @@ CEC_FW=$(get_cec_fw)
 # Collect storage packages
 if [ "$DEV_TYPE" != "BlueField2" ]; then
     STORAGE_PACKAGES=$(
-        echo "- $(get_version mlnx-libsnap)"
-        echo "- $(get_version spdk)"
-        echo "- $(get_version virtio-net-controller)"
+        version=$(get_version virtio-net-controller)
+        [ -n "$version" ] && echo "- $version"
     )
 else
+    
     STORAGE_PACKAGES=$(
-        echo "- $(get_version mlnx-libsnap)"
-        echo "- $(get_version mlnx-snap)"
-        echo "- $(get_version spdk)"
-        echo "- $(get_version virtio-net-controller)"
+        version=$(get_version mlnx-libsnap)
+        [ -n "$version" ] && echo "- $version"
+        version=$(get_version mlnx-snap)
+        [ -n "$version" ] && echo "- $version"
+        version=$(get_version spdk)
+        [ -n "$version" ] && echo "- $version"
+        version=$(get_version virtio-net-controller)
+        [ -n "$version" ] && echo "- $version"
     )
 fi
 
@@ -187,16 +191,20 @@ fi
 if [ -e /etc/debian_version ]; then
     DOCA_PACKAGES=$(
         for doca in $(dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n); do
-            echo "- $(get_version $doca)"
+            version=$(get_version $doca)
+            [ -n "$version" ] && echo "- $version"
         done
-        echo "- collectx-clxapi: $(get_version collectx-clxapi)"
+        version=$(get_version collectx-clxapi)
+        [ -n "$version" ] && echo "- collectx-clxapi: $version"
     )
 else
     DOCA_PACKAGES=$(
         for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do
-            echo "- $(get_version $doca)"
+            version=$(get_version $doca)
+            [ -n "$version" ] && echo "- $version"
         done
-        echo "- collectx-clxapi: $(get_version collectx-clxapi)"
+        version=$(get_version collectx-clxapi)
+        [ -n "$version" ] && echo "- collectx-clxapi: $version"
     )
 fi
 
@@ -204,13 +212,15 @@ fi
 if [ -e /etc/debian_version ]; then
     FLEXIO_PACKAGES=$(
         for flexio in $(dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n); do
-            echo "- $(get_version $flexio)"
+            version=$(get_version $flexio)
+            [ -n "$version" ] && echo "- $version"
         done
     )
 else
     FLEXIO_PACKAGES=$(
         for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do
-            echo "- $(get_version $flexio)"
+            version=$(get_version $flexio)
+            [ -n "$version" ] && echo "- $version"
         done
     )
 fi
@@ -219,13 +229,15 @@ fi
 if [ -e /etc/debian_version ]; then
     SOC_PACKAGES=$(
         for package in $(dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n); do
-            echo "- $(get_version $package)"
+            version=$(get_version $package)
+            [ -n "$version" ] && echo "- $version"
         done
     )
 else
     SOC_PACKAGES=$(
         for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do
-            echo "- $(get_version $package)"
+            version=$(get_version $package)
+            [ -n "$version" ] && echo "- $version"
         done
     )
 fi
