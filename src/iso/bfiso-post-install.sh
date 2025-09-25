@@ -111,7 +111,7 @@ fspath=$(readlink -f "$(dirname $0)")
 
 ROOTFS=${ROOTFS:-"ext4"}
 
-export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}' | head -1)
 export flint_dev=$cx_pcidev
 
 export FLINT=mstflint
@@ -136,7 +136,7 @@ fi
 export dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
 
 cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
-pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
+pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
 dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
 PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
 
@@ -219,6 +219,9 @@ configure_target_os()
 		ln -snf snap_rpc_init_bf2.conf /etc/mlnx_snap/snap_rpc_init.conf
 	elif (lspci -n -d 15b3: | grep -wq 'a2dc'); then
 		# BlueField-3
+		apt remove -y --purge mlnx-snap || true
+	elif (lspci -n -d 15b3: | grep -wq 'a2df'); then
+		# BlueField-4
 		apt remove -y --purge mlnx-snap || true
 	fi
 
@@ -445,7 +448,9 @@ configure_grub()
 		sed -i -r -e "s/(password_pbkdf2 admin).*/\1 ${grub_admin_PASSWORD}/" /etc/grub.d/40_custom
 	fi
 
-	if (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
+	if (lscpu 2>&1 | grep -wq Grace); then
+		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 net.ifnames=0 biosdevname=0 iommu.passthrough=1\"@" /mnt/etc/default/grub
+	elif (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
 	fi
@@ -677,7 +682,7 @@ configure_sfs()
 {
 	: > /etc/mellanox/mlnx-sf.conf
 
-	for pciid in $(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}')
+	for pciid in $(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
 	do
 		cat >> /etc/mellanox/mlnx-sf.conf << EOF
 /sbin/mlnx-sf --action create --device $pciid --sfnum 0 --hwaddr $(uuidgen | sed -e 's/-//;s/^\(..\)\(..\)\(..\)\(..\)\(..\).*$/02:\1:\2:\3:\4:\5/')

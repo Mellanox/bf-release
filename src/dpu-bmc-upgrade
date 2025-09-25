@@ -47,7 +47,7 @@ DPU_GI_PATH=${DPU_GI_PATH:-"/lib/firmware/mellanox/bmc"}
 BMC_PATH=${BMC_PATH:-"/lib/firmware/mellanox/bmc"}
 CEC_PATH=${CEC_PATH:-"/lib/firmware/mellanox/cec"}
 
-export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26c] | awk '{print $1}' | head -1)
+export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}' | head -1)
 export flint_dev=$cx_pcidev
 export FLINT=mstflint
 if [ ! -x /usr/bin/mstflint ]; then
