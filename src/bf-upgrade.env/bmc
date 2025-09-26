@@ -50,6 +50,7 @@ CHROOT_DIR=${CHROOT_DIR:-"/mnt"}
 BMC_CREDENTIALS="'{\"username\":\"$BMC_USER\", \"password\":\"${BMC_PASSWORD}\"}'"
 BMC_LINK_UP="no"
 BMC_FIRMWARE_UPDATED="no"
+BMC_FIRMWARE_STAGED="no"
 export BMC_TOKEN=""
 export task_id=""
 export task_state=""
@@ -380,7 +381,13 @@ update_bmc_fw()
 {
 	rc=0
 	wait_bmc_task_complete
-	log "Updating BMC firmware"
+	if [ $COMPATIBILITY_FLOW -eq 1 ]; then
+		log "Updating BMC firmware"
+	elif [ $UPGRADE_FLOW -eq 1 ]; then
+		log "Staging BMC firmware"
+	else
+		return 0
+	fi
 	#Set upload image from local BFB storage (or tempfs).
 	image="${BMC_IMAGE}"
 	if [ -z "$image" ]; then
@@ -419,27 +426,44 @@ update_bmc_fw()
 		fi
 	fi
 
-	ilog "Proceeding with the BMC firmware update."
-
 	if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION}" ]]; then
-		ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"ForceUpdate\":true};type=application/octet-stream' -F UpdateFile=@${image}"
-		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+		if [ $COMPATIBILITY_FLOW -eq 1 ]; then
+			ilog "Proceeding with the BMC firmware update using update-multipart."
+			ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"ForceUpdate\":true};type=application/octet-stream' -F UpdateFile=@${image}"
+			output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+			ilog "BMC Firmware update: $output"
+			BMC_FIRMWARE_UPDATED="yes"
+		elif [ $UPGRADE_FLOW -eq 1 ]; then
+			ilog "Proceeding with the BMC firmware staging."
+			ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"Oem\":{\"Nvidia\":{\"UpdateOption\":\"StageOnly\"}}};type=application/octet-stream' -F UpdateFile=@${image}"
+			output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"Oem":{"Nvidia":{"UpdateOption":"StageOnly"}}};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+			ilog "BMC Firmware staging: $output"
+			BMC_FIRMWARE_STAGED="yes"
+		fi
 	else
+		ilog "Proceeding with the BMC firmware update."
 		ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService"
 		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
+		ilog "BMC Firmware update: $output"
+		BMC_FIRMWARE_UPDATED="yes"
 	fi
-	ilog "BMC Firmware update: $output"
-
-	BMC_FIRMWARE_UPDATED="yes"
 
 	wait_bmc_task_complete
-	post_bmc_install_message="INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}"
-	if [ "$BMC_REBOOT" != "yes" ]; then
-		post_bmc_install_message="${post_bmc_install_message}. BMC restart is required"
-	fi
-	log "${post_bmc_install_message}"
-	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
-		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
+	if [ "$BMC_FIRMWARE_UPDATED" == "yes" ]; then
+		post_bmc_install_message="INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}"
+		if [ "$BMC_REBOOT" != "yes" ]; then
+			post_bmc_install_message="${post_bmc_install_message}. BMC restart is required"
+		fi
+		log "${post_bmc_install_message}"
+		if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
+			BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
+		fi
+	elif [ "$BMC_FIRMWARE_STAGED" == "yes" ]; then
+		post_bmc_install_message="INFO: BMC firmware was staged"
+		if [ "$ACTIVATION_FLOW" -ne 1 ]; then
+			post_bmc_install_message="${post_bmc_install_message}. BMC Firmware activation is required"
+		fi
+		log "${post_bmc_install_message}"
 	fi
 
 	return $rc
