@@ -56,12 +56,12 @@ provided_nic_fw()
 is_nic_fw_update_required()
 {
 	if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
-		log "INFO: FORCE_NIC_FW_UPDATE is set."
+		log "FORCE_NIC_FW_UPDATE is set."
 		return 0
 	fi
 
 	if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
-		log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
+		log "Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
 		return 1
 	fi
 	return 0
@@ -81,7 +81,7 @@ fw_update()
 	if [ $NIC_FW_FOUND -eq 1 ]; then
 		# Check if firmware image was already updated on flash
 		if ($FLINT -d $cx_pcidev q 2>&1 | grep -q 'FW Version(Running)'); then
-			log "INFO: Reactivating previous firmware image on the NIC"
+			log "Reactivating previous firmware image on the NIC"
 			ilog "$($FLINT -d $cx_pcidev ir)"
 		fi
 
@@ -89,7 +89,7 @@ fw_update()
 			return
 		fi
 
-		log "INFO: Updating NIC firmware..."
+		log "Updating NIC firmware..."
 		${CHROOT_DIR}${FW_UPDATER} --log /tmp/mlnx_fw_update.log -v \
 			--force-fw-update \
 			--fw-dir ${CHROOT_DIR}${FW_DIR} > /tmp/mlnx_fw_update.out 2>&1
@@ -108,15 +108,15 @@ fw_update()
 		NIC_FW_UPDATE_DONE=1
 		if [ $rc -ne 0 ] || (grep -q '\-E- Failed' /tmp/mlnx_fw_update.log); then
 			NIC_FW_UPDATE_PASSED=0
-			log "INFO: NIC firmware update failed"
+			log "ERR NIC firmware update failed"
 			return 1
 		else
 			NIC_FW_UPDATE_PASSED=1
-			log "INFO: NIC firmware update done: $(provided_nic_fw)"
+			log "NIC firmware update done: $(provided_nic_fw)"
 			return 0
 		fi
 	else
-		log "WARNING: NIC Firmware files were not found"
+		log "WARN NIC Firmware files were not found"
 		return 1
 	fi
 }
@@ -129,10 +129,10 @@ fw_bin_update()
 	output=$($FLINT -d $flint_dev -i $NIC_FW_BIN -y b 2>&1)
 	if [ $? -eq 0 ]; then
 		NIC_FW_UPDATE_PASSED=1
-		log "INFO: NIC firmware update done: $(provided_nic_fw). NIC Firmware reset or Host power cycle is required to activate the new NIC Firmware."
+		log "NIC firmware update done: $(provided_nic_fw). NIC Firmware reset or Host power cycle is required to activate the new NIC Firmware."
 	else
 		NIC_FW_UPDATE_PASSED=0
-		log "INFO: NIC firmware update failed: $output"
+		log "ERR NIC firmware update failed: $output"
 	fi
 }
 
@@ -144,21 +144,21 @@ fw_reset()
 	fi
 
 	if ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
-		log "INFO: Live Patch NIC Firmware reset is supported."
+		log "Live Patch NIC Firmware reset is supported."
 		msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
 		if [ $? -ne 0 ]; then
-			log "INFO: Live Patch NIC Firmware reset failed."
-			log "INFO: $msg"
+			log "ERR Live Patch NIC Firmware reset failed."
+			log "$msg"
 			if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
 				return
 			fi
 		else
-			log "INFO: Live Patch NIC Firmware reset done"
+			log "Live Patch NIC Firmware reset done"
 			return
 		fi
 	else
 		if [ "$LFWP" == "yes" ]; then
-		        log "INFO: Live Patch NIC Firmware reset is not supported."
+		        log "Live Patch NIC Firmware reset is not supported."
 		        if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
 		                return
 		        fi
@@ -188,21 +188,21 @@ fw_reset()
 	while ! ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver is the owner" | grep -qw "\-Supported")
 	do
 		if [ $SECONDS -gt $MLXFWRESET_TIMEOUT ]; then
-			log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+			log "NIC Firmware reset is not supported. Host power cycle is required"
 			return
 		fi
 		sleep 1
 	done
 
 	if ! ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver restart and PCI reset" | grep -qw "\-Supported"); then
-		log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+		log "NIC Firmware reset is not supported. Host power cycle is required"
 		return
 	fi
 
-	log "INFO: Running NIC Firmware reset"
+	log "Running NIC Firmware reset"
 	save_log
 	if [ "X$mode" == "Xmanufacturing" ]; then
-		log "INFO: Rebooting..."
+		log "Rebooting..."
 	fi
 	# Wait for these messages to be pulled by the rshim service
 	# as mlxfwreset will restart the DPU
@@ -210,14 +210,14 @@ fw_reset()
 
 	msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 3 --sync 1 r 2>&1)
 	if [ $? -ne 0 ]; then
-		log "INFO: NIC Firmware reset failed. Host power cycle is required"
-		log "INFO: $msg"
+		log "ERR NIC Firmware reset failed. Host power cycle is required"
+		log "$msg"
 	else
-		log "INFO: NIC Firmware reset done"
+		log "NIC Firmware reset done"
 		if [ "$(running_nic_fw)" == "${PROVIDED_NIC_FW_VERSION}" ]; then
-			log "INFO: NIC Firmware reset passed. Running NIC FW: ${PROVIDED_NIC_FW_VERSION}"
+			log "NIC Firmware reset passed. Running NIC FW: ${PROVIDED_NIC_FW_VERSION}"
 		else
-			log "INFO: NIC Firmware reset failed. Host power cycle is required"
+			log "ERR NIC Firmware reset failed. Host power cycle is required"
 		fi
 	fi
 }

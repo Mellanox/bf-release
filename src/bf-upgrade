@@ -270,11 +270,11 @@ if [ $IS_BUNDLE -eq 0 ]; then
 		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
 			if [ -e dump-capsule-v0 ]; then
 				if ! function_exists update_atf_uefi; then
-					log  "ERROR: BSP upgrade function does not exist"
+					log  "ERR BSP upgrade function does not exist"
 					UPDATE_ATF_UEFI="no"
 				fi
 			else
-				log "ERROR: BSP upgrade capsule dump-capsule-v0 was not found"
+				log "ERR BSP upgrade capsule dump-capsule-v0 was not found"
 				UPDATE_ATF_UEFI="no"
 			fi
 		fi
@@ -448,6 +448,10 @@ fi
 # Keep the WDIR for activate
 # During the activate flow, the WDIR is used to run the ATF/UEFI upgrade
 if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 || $RC -ne 0 ]]; then
+	if [ $RC -ne 0 ]; then
+		log "ERR $0 flow failed with RC: $RC"
+		ilog "Removing BFB directory: $BFB_DIR"
+	fi
 	cd ${WDIR}
 	/bin/rm -rf dump-*
 	cd ..

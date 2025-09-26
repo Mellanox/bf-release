@@ -613,7 +613,7 @@ update_dpu_golden_image()
 			if [ $? -eq 0 ]; then
 				log "DPU Golden Image installed successfully"
 			else
-				log "DPU Golden Image installed failed"
+				log "ERR DPU Golden Image installed failed"
 				rc=1
 			fi
 			ilog "$output"
@@ -639,7 +639,7 @@ update_dpu_golden_image()
 						log "Installed BMC config image"
 						BMC_CONFIG_UPDATED="yes"
 					else
-						log "Failed to install BMC config image"
+						log "ERR Failed to install BMC config image"
 					fi
 					ilog "$output"
 				fi
@@ -704,7 +704,7 @@ update_nic_firmware_golden_image()
 		if [ $? -eq 0 ]; then
 			log "NIC firmware Golden Image installed successfully"
 		else
-			log "NIC firmware Golden Image installed failed"
+			log "ERR NIC firmware Golden Image installed failed"
 			rc=1
 		fi
 		ilog "$output"
