@@ -213,23 +213,30 @@ if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
 fi # compatibility flow or upgrade flow - finish reading BFB
 
 cd ${BFB_DIR}
-if ( bash -n dump-boot-args-v0 ); then
-	if (grep -qw "initrd=initramfsroot" dump-boot-args-v0); then
-		IS_BUNDLE=1
-	else
-		bfrshlog "Found bf.cfg"
-		. dump-boot-args-v0
-		if [[ "$LFWP" == "yes" || -e dump-initramfs-v0 ]]; then
+if [ -e dump-boot-args-v0 ]; then
+	if ( bash -n dump-boot-args-v0 ); then
+		if (grep -qw "initrd=initramfsroot" dump-boot-args-v0); then
+			IS_BUNDLE=1
+		else
+			log "Found bf.cfg"
+			. dump-boot-args-v0
 			if [ "$LFWP" == "yes" ]; then
 				log "LFWP upgrade flow"
 			fi
-			IS_BUNDLE=1
 		fi
 	fi
 fi
 
-if [ $IS_BUNDLE -eq 1 ]; then
-	bfrshlog "Detected Bundle BFB"
+if [ -e dump-initramfs-v0 ]; then
+	log "Detected Bundle BFB with initramfs"
+	IS_BUNDLE=1
+else
+	if [ -e dump-nicfw-v0 ]; then
+		log "Detected Flat fwbundle BFB"
+	else
+		log "Detected PLDM BFB format"
+	fi
+	IS_BUNDLE=0
 fi
 
 # Include scripts that provide upgrade infrastructure
