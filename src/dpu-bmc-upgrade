@@ -73,8 +73,8 @@ export dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk
 if (lspci -n -d 15b3: | grep -wq 'a2dc'); then
 	BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf3-bmc*.fwpkg 2> /dev/null)"}
 	CEC_IMAGE=${CEC_IMAGE:-"$(/bin/ls ${CEC_PATH}/*cec-fw.fwpkg 2> /dev/null)"}
-	NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-"$(/bin/ls -1 ${NIC_FW_GI_PATH}/fw*bfb 2> /dev/null | grep -w ${dpu_part_number})"}
-	DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-"$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)"}
+	NIC_FW_GOLDEN_IMAGE=${NIC_FW_GOLDEN_IMAGE:-"$(/bin/ls -1 ${NIC_FW_GI_PATH}/fw*{pldm,bfb} 2> /dev/null | grep -w ${dpu_part_number})"}
+	DPU_GOLDEN_IMAGE=${DPU_GOLDEN_IMAGE:-"$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.{pldm,bfb} 2> /dev/null)"}
 elif (lspci -n -d 15b3: | grep -wq 'a2d6'); then
 	BMC_IMAGE=${BMC_IMAGE:-"$(/bin/ls ${BMC_PATH}/bf2-bmc*.tar 2> /dev/null)"}
 	CEC_IMAGE=${CEC_IMAGE:-"$(/bin/ls ${CEC_PATH}/*cec-fw.bin 2> /dev/null)"}
