@@ -646,6 +646,9 @@ update_dpu_golden_image()
 			fi
 		fi
 	elif [ "$image_type" == "pldm" ]; then
+
+		wait_bmc_task_complete
+
 		if [ -z "$BMC_INSTALLED_VERSION" ]; then
 			get_bmc_firmware_version
 		fi
@@ -709,6 +712,9 @@ update_nic_firmware_golden_image()
 		fi
 		ilog "$output"
 	elif [ "$image_type" == "pldm" ]; then
+
+		wait_bmc_task_complete
+
 		if [ -z "$BMC_INSTALLED_VERSION" ]; then
 			get_bmc_firmware_version
 		fi
