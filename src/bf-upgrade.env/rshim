@@ -25,20 +25,31 @@ read_SP2() {
 write_uint64_with_prefix() {
     local value="$1"
     local file=/tmp/output.bin
+    local log=/tmp/write_uint64_with_prefix.log
 
-    echo $value
     # Prefix in hexadecimal
-    local prefix="\x06\x00\x00\x00"
+    local prefix="06000000"
     # Convert the UINT64 value to little-endian hexadecimal format
-    local hex_value=$(printf "%016x" $value | sed 's/../& /g' | awk '{for(i=NF;i>=1;i--) printf "%s", $i; print ""}')
-
-    # Convert the little-endian hexadecimal string to binary format
-    local binary_value=$(printf "%s" "$hex_value" | xxd -r -p)
+    local value_hex=$(printf "%016x" $value | sed 's/\(..\)/\1 /g' | awk '{for(i=NF;i>=1;i--) printf "%s ", $i}')
+    local prefix_hex=$(echo "$prefix" | sed 's/\(..\)/\1 /g')
+    local hex_value="${prefix_hex}${value_hex}"
+    ilog "write_uint64_with_prefix: hex_value: $hex_value"
 
     # Write the prefix and the binary value to the file
-    printf "%s" "$prefix" > "$file"
-    printf "%s" "$binary_value" >> "$file"
-    cp $file $write_RshimSP2_path
+    echo -n "$hex_value" | xxd -r -p > $file
+
+    /bin/rm -f $write_RshimSP2_path
+
+    cp $file $write_RshimSP2_path > $log 2>&1
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        ilog "Failed command: cp $file $write_RshimSP2_path"
+        ilog "write_uint64_with_prefix: $rc output: $(cat $log)"
+        ilog "write_uint64_with_prefix: $file: $(hexdump -C $file)"
+        ilog "write_uint64_with_prefix: prefix: $prefix"
+        ilog "write_uint64_with_prefix: value: $value"
+    fi
+    /bin/rm -f $file $log $write_RshimSP2_path
 }
 
 is_mode_upgrade() {
@@ -71,8 +82,7 @@ is_mode_cancel() {
 set_status_idle() {
     # SP2.BIT11-12
     local result=$(( SP2 & status_clear_mask ))
-    echo "set_status"
-    echo "$result"
+    ilog "set_status_idle: $result"
     write_uint64_with_prefix "$result"
 }
 
@@ -90,5 +100,6 @@ set_upgrade_progress() {
     fi
 
     result=$(( result | (percent << 13) ))
+    ilog "set_upgrade_progress: $result"
     write_uint64_with_prefix "$result"
 }
