@@ -451,6 +451,7 @@ if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ||
 	if [ $RC -ne 0 ]; then
 		log "ERR $0 flow failed with RC: $RC"
 		ilog "Removing BFB directory: $BFB_DIR"
+		set_status $FAILED
 	fi
 	cd ${WDIR}
 	/bin/rm -rf dump-*
