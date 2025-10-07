@@ -339,6 +339,10 @@ wait_bmc_task_complete()
 			ilog "- ERROR: BMC task $task_id exception"
 			RC=$((RC+1))
 			break
+		elif [ "$task_state" == "Cancelled" ]; then
+			ilog "- ERROR: BMC task $task_id cancelled"
+			RC=$((RC+1))
+			break
 		fi
 		sleep 10
 	done
