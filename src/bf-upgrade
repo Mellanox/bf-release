@@ -221,7 +221,8 @@ if [ -e dump-boot-args-v0 ]; then
 			log "Found bf.cfg"
 			. dump-boot-args-v0
 			if [ "$LFWP" == "yes" ]; then
-				log "LFWP upgrade flow"
+				log "LFWP upgrade flow including NIC Firmware activation"
+				ACTIVATE_FLOW=1
 			fi
 		fi
 	fi
