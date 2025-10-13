@@ -9,7 +9,7 @@ IN_PROGRESS=0x1
 COMPLETED=0x2
 FAILED=0x3
 
-# Function to read 8 bytes from a specific offset and convert to UINT64 little-endian
+# Function to read 8 bytes from a specific offset and convert from little-endian to UINT64
 read_SP2() {
     # Read 8 bytes starting from the specified offset
     bytes=$(dd if="$read_RshimSP2_path" bs=1 skip=4 count=8 2>/dev/null | xxd -p -c 8)
@@ -57,7 +57,7 @@ write_uint64_with_prefix() {
 
 is_mode_upgrade() {
     # SP2.BIT2
-    if (( ($SP2 & 4 ) == 4 )); then
+    if (( ($1 & 4 ) == 4 )); then
         return 0;
     else
         return 1;
@@ -66,7 +66,7 @@ is_mode_upgrade() {
 
 is_mode_activate() {
     # SP2.BIT6
-    if (( ($SP2 & 64 ) == 64 )); then
+    if (( ($1 & 64 ) == 64 )); then
         return 0;
     else
         return 1;
@@ -75,7 +75,7 @@ is_mode_activate() {
 
 is_mode_cancel() {
     # SP2.BIT7
-    if (( ($SP2 & 128) == 128)); then
+    if (( ($1 & 128) == 128)); then
         return 0;
     else
         return 1;

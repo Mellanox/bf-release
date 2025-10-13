@@ -128,12 +128,12 @@ fi
 SP2=$(read_SP2)
 ilog "UINT64 value starting from the 5th byte (little-endian): $SP2"
 
-if is_mode_upgrade; then
+if is_mode_upgrade $SP2; then
 	ilog "RSSHIM SP2 is $SP2: Running Upgrade flow"
 	UPGRADE_FLOW=1
 	touch /tmp/update_in_progress
 fi
-if is_mode_activate; then
+if is_mode_activate $SP2; then
 	ilog "RSSHIM SP2 is $SP2: Running ActivateFirmware flow"
 	ACTIVATE_FLOW=1
 fi
