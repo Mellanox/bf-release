@@ -822,6 +822,8 @@ bmc_components_update()
 	if [[ "$UPDATE_CEC_FW" == "yes" && "$BMC_LINK_UP" == "yes" ]]; then
 		update_cec_fw
 		update_progress cec_fw $?
+		ilog "Activating CEC firmware. It is required before BMC firmware update due to CEC limitations."
+		bmc_activate
 	fi
 
 	if function_exists bmc_custom_action2; then
@@ -906,12 +908,16 @@ bmc_activate()
 		output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -X POST https://$BMC_IP/redfish/v1/UpdateService/Actions/Oem/NvidiaUpdateService.ActivateFirmware)
 		status=$(echo $output | jq '."@Message.ExtendedInfo"[0].Message')
 		if [ "$status" != "\"The request completed successfully."\" ]; then
-			rlog "ERR Failed to activate BMC firmware."
-			ilog "Failed to activate BMC firmware. Output: $output"
+			rlog "ERR Failed to activate BMC or CEC firmware."
+			ilog "Failed to activate BMC or CEC firmware. Output: $output"
+			return 1
+		else
+			log "INFO: BMC or CEC firmware activated successfully."
+			return 0
 		fi
 		ilog "$output"
 	else
-		ilog "BMC link is not up. Skipping BMC firmware activation."
+		ilog "BMC link is not up. Skipping BMC or CEC firmware activation."
 		return 1
 	fi
 }
