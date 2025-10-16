@@ -622,33 +622,6 @@ update_dpu_golden_image()
 			fi
 			ilog "$output"
 		fi
-
-		if (echo "${BD_PSIDS}" | grep -qw "${PSID}"); then
-			if [ "X${UPLOAD_CONFIG_IMAGE}" == "Xyes" ]; then
-				if [ "X${GENERATE_CONFIG_IMAGE}" == "Xyes" ]; then
-					generate_config_image $image
-				fi
-				config_image=${DPU_GI_PATH}/${CONFIG_IMAGE}
-				if [ ! -e "$config_image" ]; then
-					ilog "Config image does not exist: $config_image"
-					return 1
-				fi
-				sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-config
-				ilog "Copying $config_image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config"
-				sshpass -p $BMC_SSH_PASSWORD $SCP $config_image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config
-				if [ "X$BMC_INSTALL_CONFIG_IMAGE" == "Xyes" ]; then
-					ilog "Installing DPU Config Image on the BMC by: dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image)"
-					output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image) 2>&1)
-					if [ $? -eq 0 ]; then
-						log "Installed BMC config image"
-						BMC_CONFIG_UPDATED="yes"
-					else
-						log "ERR Failed to install BMC config image"
-					fi
-					ilog "$output"
-				fi
-			fi
-		fi
 	elif [ "$image_type" == "pldm" ]; then
 
 		wait_bmc_task_complete
@@ -668,6 +641,34 @@ update_dpu_golden_image()
 			return 1
 		fi
 	fi
+
+	if (echo "${BD_PSIDS}" | grep -qw "${PSID}"); then
+		if [ "X${UPLOAD_CONFIG_IMAGE}" == "Xyes" ]; then
+			if [ "X${GENERATE_CONFIG_IMAGE}" == "Xyes" ]; then
+				generate_config_image $image
+			fi
+			config_image=${DPU_GI_PATH}/${CONFIG_IMAGE}
+			if [ ! -e "$config_image" ]; then
+				ilog "Config image does not exist: $config_image"
+				return 1
+			fi
+			sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-config
+			ilog "Copying $config_image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config"
+			sshpass -p $BMC_SSH_PASSWORD $SCP $config_image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config
+			if [ "X$BMC_INSTALL_CONFIG_IMAGE" == "Xyes" ]; then
+				ilog "Installing DPU Config Image on the BMC by: dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image)"
+				output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image) 2>&1)
+				if [ $? -eq 0 ]; then
+					log "Installed BMC config image"
+					BMC_CONFIG_UPDATED="yes"
+				else
+					log "ERR Failed to install BMC config image"
+				fi
+				ilog "$output"
+			fi
+		fi
+	fi
+
 	return $rc
 }
 
