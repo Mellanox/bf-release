@@ -86,7 +86,7 @@ fw_update()
 		fi
 
 		if ! is_nic_fw_update_required; then
-			return
+			return 0
 		fi
 
 		log "Updating NIC firmware..."
@@ -116,104 +116,88 @@ fw_update()
 			return 0
 		fi
 	else
-		log "WARN NIC Firmware files were not found"
+		log "ERR NIC Firmware files were not found"
 		return 1
 	fi
 }
 
 fw_bin_update()
 {
+	local rc=0
 	if ! is_nic_fw_update_required; then
-		return
+		return 0
 	fi
 	output=$($FLINT -d $flint_dev -i $NIC_FW_BIN -y b 2>&1)
-	if [ $? -eq 0 ]; then
+	rc=$?
+	if [ $rc -eq 0 ]; then
 		NIC_FW_UPDATE_PASSED=1
 		log "NIC firmware update done: $(provided_nic_fw). NIC Firmware reset or Host power cycle is required to activate the new NIC Firmware."
 	else
 		NIC_FW_UPDATE_PASSED=0
 		log "ERR NIC firmware update failed: $output"
 	fi
+	return $rc
 }
 
 fw_reset()
 {
+	local rc=0
 	if [ $is_nic_mode -eq 1 ]; then
 		log "Run mlxfwreset or system-level reset to load new NIC firmware"
-		return
+		return 1
 	fi
 
 	if ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
 		log "Live Patch NIC Firmware reset is supported."
 		msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
-		if [ $? -ne 0 ]; then
+		rc=$?
+		if [ $rc -ne 0 ]; then
 			log "ERR Live Patch NIC Firmware reset failed."
 			log "$msg"
 			if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
-				return
+				return $rc
 			fi
 		else
 			log "Live Patch NIC Firmware reset done"
-			return
+			return 0
 		fi
 	else
 		if [ "$LFWP" == "yes" ]; then
-		        log "Live Patch NIC Firmware reset is not supported."
+		        log "ERR Live Patch NIC Firmware reset is not supported."
 		        if [ "$FORCE_NIC_FW_RESET" != "yes" ]; then
-		                return
+		                return 1
 		        fi
 		fi
 	fi
 
-	if [ $COMPATIBILITY_FLOW -ne 1 ]; then
-		return
+	if [ "$RUNTIME_UPGRADE" == "yes" ]; then
+		return 0
 	fi
 
-	if [ "$RUNTIME_UPGRADE" != "yes" ]; then
-		/sbin/modprobe -a mlx5_core ib_umad
-		run_mlnx_bf_configure=0
-		if [[ -n ${CHROOT_DIR} && -x ${CHROOT_DIR}/sbin/mlnx_bf_configure ]]; then
-			CHROOT="chroot ${CHROOT_DIR}"
-			run_mlnx_bf_configure=1
-		elif [ -x /sbin/mlnx_bf_configure ]; then
-			run_mlnx_bf_configure=1
-		else
-			run_mlnx_bf_configure=0
-		fi
-
-		if [ $run_mlnx_bf_configure -eq 1 ]; then
-			ilog "Running mlnx_bf_configure:"
-			ilog "$($CHROOT /sbin/mlnx_bf_configure 2>&1)"
-		fi
-	fi
-
-	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-180}
+	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-60}
 	SECONDS=0
 	while ! ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver is the owner" | grep -qw "\-Supported")
 	do
 		if [ $SECONDS -gt $MLXFWRESET_TIMEOUT ]; then
-			log "NIC Firmware reset is not supported. Host power cycle is required"
-			return
+			log "ERR NIC Firmware reset is not supported. Host power cycle is required"
+			return 1
 		fi
 		sleep 1
 	done
 
 	if ! ($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver restart and PCI reset" | grep -qw "\-Supported"); then
-		log "NIC Firmware reset is not supported. Host power cycle is required"
-		return
+		log "ERR NIC Firmware reset is not supported. Host power cycle is required"
+		return 1
 	fi
 
 	log "Running NIC Firmware reset"
-	save_log
-	if [ "X$mode" == "Xmanufacturing" ]; then
-		log "Rebooting..."
-	fi
 	# Wait for these messages to be pulled by the rshim service
 	# as mlxfwreset will restart the DPU
 	sleep 3
 
 	msg=$($CHROOT mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 3 --sync 1 r 2>&1)
-	if [ $? -ne 0 ]; then
+	rc=$?
+	if [ $rc -ne 0 ]; then
 		log "ERR NIC Firmware reset failed. Host power cycle is required"
 		log "$msg"
 	else
@@ -222,26 +206,46 @@ fw_reset()
 			log "NIC Firmware reset passed. Running NIC FW: ${PROVIDED_NIC_FW_VERSION}"
 		else
 			log "ERR NIC Firmware reset failed. Host power cycle is required"
+			rc=1
 		fi
 	fi
+	return $rc
 }
 
 update_nic_firmware()
 {
+	local rc=0
 	if [ $NIC_FW_UPDATE_DONE -eq 0 ]; then
 		if [ -n "$NIC_FW_BIN" ]; then
 			fw_bin_update
 		else
 			fw_update
 		fi
+		rc=$?
 	fi
+	return $rc
+}
+
+nic_firmware_update()
+{
+	local update_nic_firmware_status
+	update_nic_firmware
+	update_nic_firmware_status=$?
+	update_progress nic_firmware $update_nic_firmware_status
+	if [ $update_nic_firmware_status -eq 0 ]; then
+		touch ${BFB_DIR}/nic_firmware_updated
+	else
+		touch ${BFB_DIR}/nic_firmware_update_failed
+	fi
+	return $update_nic_firmware_status
 }
 
 reset_nic_firmware()
 {
+	local rc=0
 	if [ "$NIC_FW_RESET" != "yes" ]; then
 		log "Skip NIC Firmware reset"
-		return
+		return 0
 	fi
 
 	if [ $COMPATIBILITY_FLOW -eq 1 ]; then
@@ -249,9 +253,12 @@ reset_nic_firmware()
 			if [ $NIC_FW_UPDATE_PASSED -eq 1 ]; then
 				# Reset NIC FW
 				fw_reset
+				rc=$?
 			fi
 		fi
 	elif [ $ACTIVATE_FLOW -eq 1 ]; then
 		fw_reset
+		rc=$?
 	fi
+	return $rc
 }

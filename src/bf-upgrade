@@ -79,6 +79,7 @@ unmount_partitions()
 }
 
 RC=0
+ACTVATION_STATUS=0
 # Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
 INITIAL_DATA_RECEIVE_TIMEOUT=20
@@ -115,48 +116,56 @@ state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
 TMPDIR=${TMPDIR:-"/tmp"}
 WDIR=${WDIR:-"$(mktemp -d ${TMPDIR}/bfb.XXXXXX)"}
 BFB_DIR=${TMPDIR}/bfb
-
-if [ -e /tmp/update_in_progress ]; then
+UPDATE_IN_PROGRESS=0
+UPDATE_IN_PROGRESS_FILE=${TMPDIR}/update_in_progress
+if [ -e $UPDATE_IN_PROGRESS_FILE ]; then
 	ilog "Update in progress. Awaiting for activation."
-	/bin/rm -rf /tmp/update_in_progress
+	UPDATE_IN_PROGRESS=1
+	/bin/rm -rf $UPDATE_IN_PROGRESS_FILE
 else
 	/bin/rm -rf ${BFB_DIR}/* ${BFB_DIR}
 	/bin/ln -sf ${WDIR} ${BFB_DIR}
 fi
 
 # Read 8 bytes starting from the 5th byte (offset 4)
-SP2=$(read_SP2)
-ilog "UINT64 value starting from the 5th byte (little-endian): $SP2"
+RSHIM_SP2=$(read_SP2)
+ilog "UINT64 value starting from the 5th byte (little-endian): $RSHIM_SP2"
 
-if is_mode_upgrade $SP2; then
-	ilog "RSSHIM SP2 is $SP2: Running Upgrade flow"
+set_upgrade_progress 0 0
+
+if is_mode_upgrade $RSHIM_SP2; then
+	ilog "RSHIM SP2 is $RSHIM_SP2: Running Upgrade flow"
+	if [ $UPDATE_IN_PROGRESS -eq 1 ]; then
+		ilog "Previous update in progress. Awaiting for activation."
+		exit 1
+	fi
 	UPGRADE_FLOW=1
-	touch /tmp/update_in_progress
+	touch $UPDATE_IN_PROGRESS_FILE
 fi
-if is_mode_activate $SP2; then
-	ilog "RSSHIM SP2 is $SP2: Running ActivateFirmware flow"
+if is_mode_activate $RSHIM_SP2; then
+	ilog "RSHIM SP2 is $RSHIM_SP2: Running ActivateFirmware flow"
 	ACTIVATE_FLOW=1
 fi
-if is_mode_cancel; then
-	ilog "RSSHIM SP2 is $SP2: Running Cancel flow"
+if is_mode_cancel $RSHIM_SP2; then
+	ilog "RSHIM SP2 is $RSHIM_SP2: Running Cancel flow"
 	CANCEL_FLOW=1
 fi
 if [ $UPGRADE_FLOW -eq 0 ] && [ $ACTIVATE_FLOW -eq 0 ] && [ $CANCEL_FLOW -eq 0 ]; then
-	ilog "RSSHIM SP2 is $SP2: Running Compatibility flow"
+	ilog "RSHIM SP2 is $RSHIM_SP2: Running Compatibility flow"
 	COMPATIBILITY_FLOW=1
 fi
 
 # IS_BUNDLE is set to 1 if the BFB is a bf-bundle or bf-fwbundle (non-flat) BFB
 IS_BUNDLE=0
-UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
-UPDATE_DPU_OS=${UPDATE_DPU_OS:-"no"}
-UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
-UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
-UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
-UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
-WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
-RUNTIME_UPGRADE="yes"
-USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
+export UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
+export UPDATE_DPU_OS=${UPDATE_DPU_OS:-"no"}
+export UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
+export UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
+export UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
+export UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
+export WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
+export RUNTIME_UPGRADE="yes"
+export USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
 
 if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
 	# Add a delay for the boot-fifo to be filled.
@@ -189,7 +198,7 @@ if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
 
 	if [ ! -s "${UPGRADE_IMAGE}" ]; then
 		log "ERR Failed to receive a BFB"
-		/bin/rm -rf ${WDIR} ${BFB_DIR} /tmp/update_in_progress
+		/bin/rm -rf ${WDIR} ${BFB_DIR} $UPDATE_IN_PROGRESS_FILE
 		exit 1
 	fi
 
@@ -257,12 +266,24 @@ if (bash -n ${SCRIPTS_DIR}/bf-upgrade.env/bmc 2>/dev/null); then
 	. ${SCRIPTS_DIR}/bf-upgrade.env/bmc
 fi
 
-if [ -n "$BMC_IP" ]; then
-	if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
-	    create_vlan
+if [[ -n "$BMC_USER" && -n "$BMC_PASSWORD" ]]; then
+	if [ -n "$BMC_IP" ]; then
+		if ! (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+			if ! create_vlan; then
+				log "ERR Failed to create VLAN"
+				skip_bmc 0
+				RC=$(( RC + 1 ))
+			fi
+		else
+			BMC_LINK_UP="yes"
+		fi
 	else
-	    BMC_LINK_UP="yes"
+		log "WARN BMC_IP is not set"
+		skip_bmc 0
 	fi
+else
+	log "WARN BMC credentials are not set"
+	skip_bmc 0
 fi
 
 if [ $IS_BUNDLE -eq 0 ]; then
@@ -283,7 +304,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 
 	if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
 		if ! function_exists bmc_components_update; then
-			log  "ERROR: BMC upgrade function does not exist"
+			log  "ERR BMC upgrade function does not exist"
 			skip_bmc 0
 		fi
 
@@ -291,7 +312,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-image-v0 ]; then
 				BMC_IMAGE=$(readlink -f dump-image-v0)
 			else
-				log "ERROR: BMC firmware dump-image-v0 was not found"
+				log "ERR BMC firmware dump-image-v0 was not found"
 				UPDATE_BMC_FW="no"
 			fi
 		fi
@@ -300,7 +321,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-upgrade-image-v0 ]; then
 				CEC_IMAGE=$(readlink -f dump-upgrade-image-v0)
 			else
-				log "ERROR: CEC firmware dump-upgrade-image-v0 was not found"
+				log "ERR CEC firmware dump-upgrade-image-v0 was not found"
 				UPDATE_CEC_FW="no"
 			fi
 		fi
@@ -309,7 +330,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-dpu-gi-v0 ]; then
 				DPU_GOLDEN_IMAGE=$(readlink -f dump-dpu-gi-v0)
 			else
-				log "ERROR: DPU Golden Image dump-dpu-gi-v0 was not found"
+				log "ERR DPU Golden Image dump-dpu-gi-v0 was not found"
 				UPDATE_DPU_GOLDEN_IMAGE="no"
 			fi
 		fi
@@ -318,7 +339,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-ramdisk-v0 ]; then
 				NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
 			else
-				# log "ERROR: NIC firmware golden image dump-upgrade-image-v0 was not found"
+				# log "ERR NIC firmware golden image dump-upgrade-image-v0 was not found"
 				UPDATE_NIC_FW_GOLDEN_IMAGE="no"
 			fi
 		fi
@@ -328,11 +349,11 @@ if [ $IS_BUNDLE -eq 0 ]; then
 				if function_exists update_nic_firmware; then
 					NIC_FW_BIN=$(readlink -f dump-nicfw-v0)
 				else
-					log  "ERROR: NIC Firmware upgrade function does not exist"
+					log  "ERR NIC Firmware upgrade function does not exist"
 					WITH_NIC_FW_UPDATE="no"
 				fi
 			else
-				# log "ERROR: NIC firmware binary dump-nicfw-v0 was not found"
+				# log "ERR NIC firmware binary dump-nicfw-v0 was not found"
 				WITH_NIC_FW_UPDATE="no"
 			fi
 		fi
@@ -341,13 +362,16 @@ if [ $IS_BUNDLE -eq 0 ]; then
 		update_progress install_setup 0
 	fi # compatibility flow or upgrade flow - finish updating components
 
-	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
-		# Update components
-		if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
-			if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
-				update_atf_uefi $(readlink -f dump-capsule-v0)
-				update_progress atf_uefi $?
-			fi
+	if [ "$UPDATE_ATF_UEFI" == "yes" ]; then
+		update_atf_uefi_status=0
+		if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+			# Update components
+			update_atf_uefi $(readlink -f dump-capsule-v0)
+			update_atf_uefi_status=$?
+			ACTVATION_STATUS=$(( ACTVATION_STATUS + update_atf_uefi_status ))
+		fi
+		if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+			update_progress atf_uefi $update_atf_uefi_status
 		fi
 	fi
 
@@ -355,18 +379,24 @@ if [ $IS_BUNDLE -eq 0 ]; then
 		bmc_components_update
 
 		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-			update_nic_firmware
-			update_progress nic_firmware $?
+			nic_firmware_update
 		fi
 	fi
 
 	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
-		bmc_activate
+		if [ -e ${BFB_DIR}/bmc_firmware_staged ]; then
+			ilog "Activating BMC firmware"
+			bmc_activate
+			ACTVATION_STATUS=$(( ACTVATION_STATUS + $? ))
+			/bin/rm -f ${BFB_DIR}/bmc_firmware_staged
+		else
+			ilog "BMC firmware was not staged. Skipping BMC firmware activation."
+		fi
 	fi
 else
 	#BUNDLE BFB that contains Linux kernel and initramfs
 	if [ ! -e dump-initramfs-v0 ]; then
-		log "ERROR: BFB's initramfs dump-initramfs-v0 was not found"
+		log "ERR BFB's initramfs dump-initramfs-v0 was not found"
 		exit 1
 	fi
 
@@ -382,7 +412,7 @@ else
 	fi
 	if [ "$USE_BFB_INSTALL" == "yes" ]; then
 		if [ ! -e ubuntu/install.sh ]; then
-			log "ERROR: ubuntu/install.sh was not found. Only bf-fwbundle is supported."
+			log "ERR ubuntu/install.sh was not found. Only bf-fwbundle is supported."
 			exit 1
 		fi
 		log "Running ubuntu/install.sh"
@@ -431,19 +461,31 @@ else
 
 			if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
 				if [[ $UPGRADE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
-					update_nic_firmware
-					update_progress nic_firmware $?
+					nic_firmware_update
 				fi
-			fi
-			cat /tmp/*log >> /var/log/bf-upgrade.log 2> /dev/null || true
-		fi
-		if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
-			if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
-				reset_nic_firmware
 			fi
 		fi
 	fi
 	cd ..
+fi
+
+if [ -e ${BFB_DIR}/nic_firmware_updated ]; then
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		ilog "Resetting NIC firmware"
+		NIC_FW_UPDATE_DONE=1
+		NIC_FW_UPDATE_PASSED=1
+		reset_nic_firmware
+		reset_nic_firmware_status=$?
+		ACTVATION_STATUS=$(( ACTVATION_STATUS + reset_nic_firmware_status ))
+		/bin/rm -f ${BFB_DIR}/nic_firmware_updated
+	fi
+elif [ -e ${BFB_DIR}/nic_firmware_update_failed ]; then
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
+		ilog "ERR NIC firmware update failed. Skipping activation."
+		ACTVATION_STATUS=$(( ACTVATION_STATUS + 1 ))
+		RC=$(( RC + 1 ))
+		/bin/rm -f ${BFB_DIR}/nic_firmware_update_failed
+	fi
 fi
 
 # Keep the WDIR for activate
@@ -452,18 +494,39 @@ if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ||
 	if [ $RC -ne 0 ]; then
 		log "ERR $0 flow failed with RC: $RC"
 		ilog "Removing BFB directory: $BFB_DIR"
-		set_status $FAILED
 	fi
 	cd ${WDIR}
 	/bin/rm -rf dump-*
 	cd ..
 
 	if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
-		/bin/rm -rf ${WDIR} ${BFB_DIR} /tmp/update_in_progress
+		/bin/rm -rf ${WDIR} ${BFB_DIR} $UPDATE_IN_PROGRESS_FILE
 	else
 		ilog "Failed to unmount ${WDIR}/initramfs"
 	fi
 fi
 
-log "Runtime upgrade finished"
+if [ $UPGRADE_FLOW -eq 1 ]; then
+	if [ $ACTIVATE_FLOW -eq 1 ]; then
+		if [ $RC -eq 0 ]; then
+			log "Runtime upgrade finished successfully"
+		else
+			log "ERR Runtime upgrade finished with errors"
+		fi
+	else
+		update_progress finished $RC
+		log "Runtime upgrade finished. Activate firmware to complete the update."
+	fi
+fi
+
+if [ $ACTIVATE_FLOW -eq 1 ]; then
+	update_progress activate $((ACTVATION_STATUS + RC))
+	if [ $ACTVATION_STATUS -eq 0 ]; then
+		log "Activation finished successfully"
+	else
+		log "ERR Activation finished with errors"
+	fi
+fi
+
 sleep 3
+exit $((RC + ACTVATION_STATUS))

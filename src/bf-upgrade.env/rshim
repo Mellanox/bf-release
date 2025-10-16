@@ -2,8 +2,8 @@
 read_RshimSP2_path=/sys/firmware/efi/efivars/RshimSP2R-f3ce977e-c17f-493e-a3cd-5731d386e505
 write_RshimSP2_path=/sys/firmware/efi/efivars/RshimSP2W-f3ce977e-c17f-493e-a3cd-5731d386e505
 
-status_clear_mask=$(( ~( (1 << 11) | (1 << 12) ) ))
-progress_clear_mask=$(( ~( (1 << 13) | (1 << 14) | (1 << 15)) ))
+status_clear_mask=$(( ~((1 << 11) | (1 << 12)) ))
+progress_clear_mask=$(( ~((1 << 13) | (1 << 14) | (1 << 15)) ))
 
 IN_PROGRESS=0x1
 COMPLETED=0x2
@@ -82,29 +82,28 @@ is_mode_cancel() {
     fi
 }
 
-set_status() {
-    # SP2.BIT11-12
-    local result=$(( SP2 & status_clear_mask ))
-    result=$(( result | ($1 << 11) ))
-
-    ilog "set_status: $result"
-    write_uint64_with_prefix "$result"
-}
-
 set_upgrade_progress() {
     # bits 13, 14, 15
     # b000 - 0%, b001 - 20%, b010 - 40%, b011 - 60%, b100 - 80%, b101 - 100%
+    local progress=$1
+    local status=$2
     local percent
+    local result
+    local SP2
     SP2=$(read_SP2)
-    local result=$(( SP2 & progress_clear_mask ))
+    result=$(( SP2 & progress_clear_mask ))
     result=$(( result & status_clear_mask ))
-    if [ $1 -lt 100 ]; then
-        percent=$(( $1 / 20 ))
+    if [ $progress -lt 100 ]; then
+        percent=$(( progress / 20 ))
         [ $percent -lt 0 ] && percent=0
         result=$(( result | (IN_PROGRESS << 11) ))
     else
         percent=5
-        result=$(( result | (COMPLETED << 11) ))
+        if [ $status -eq 0 ]; then
+            result=$(( result | (COMPLETED << 11) ))
+        else
+            result=$(( result | (FAILED << 11) ))
+        fi
     fi
 
     result=$(( result | (percent << 13) ))

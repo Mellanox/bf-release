@@ -42,6 +42,7 @@ step_weights["bmc_fw"]=0
 step_weights["cec_fw"]=0
 step_weights["dpu_golden_image"]=0
 step_weights["nic_firmware_golden_image"]=0
+step_weights["finished"]=100
 
 rlog()
 {
@@ -133,6 +134,12 @@ step2str()
 	"nic_firmware_golden_image")
 		echo "NIC FW Golden Image"
 	;;
+	"finished")
+		echo "DPU Components Firmware"
+	;;
+	"activate")
+		echo "Activation"
+	;;
 	esac
 }
 
@@ -143,10 +150,17 @@ update_progress()
     local weight=${step_weights[$step]}
 
 	if [ $weight -eq 0 ]; then
+		if function_exists set_upgrade_progress; then
+			set_upgrade_progress 0 0
+		fi
 		return
 	fi
     ((current_progress += weight))
     local percentage=$((current_progress * 100 / total_weight))
+
+	if [[ $step == "finished" || $step == "activate" ]]; then
+		percentage=100
+	fi
 
 	if [ $status -eq 0 ]; then
 		status_str="passed"
@@ -159,7 +173,7 @@ update_progress()
 	printf "\n"
 	ilog "BFB-Installer: Installing ${step_str} ${status_str}, total ${percentage}% complete"
 	if function_exists set_upgrade_progress; then
-		set_upgrade_progress $percentage
+		set_upgrade_progress $percentage $status
 	fi
 }
 

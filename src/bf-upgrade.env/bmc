@@ -67,7 +67,8 @@ reset_bmc_rshim_log()
 	is_bmc_rshim=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'test -e /dev/rshim0/misc && echo "yes" || echo "no"')
 	if [ "$is_bmc_rshim" == "no" ]; then
 		ilog "BMC Rshim is not found"
-		return
+		RC=$((RC+1))
+		return $RC
 	fi
 	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 1" > /dev/rshim0/misc')"
 	log "Resetting BMC Rshim log"
@@ -385,7 +386,7 @@ update_bmc_fw()
 {
 	rc=0
 	wait_bmc_task_complete
-	if [ $COMPATIBILITY_FLOW -eq 1 ]; then
+	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
 		log "Updating BMC firmware"
 	elif [ $UPGRADE_FLOW -eq 1 ]; then
 		log "Staging BMC firmware"
@@ -431,7 +432,7 @@ update_bmc_fw()
 	fi
 
 	if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION}" ]]; then
-		if [ $COMPATIBILITY_FLOW -eq 1 ]; then
+		if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
 			ilog "Proceeding with the BMC firmware update using update-multipart."
 			ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"ForceUpdate\":true};type=application/octet-stream' -F UpdateFile=@${image}"
 			output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
@@ -468,6 +469,7 @@ update_bmc_fw()
 			post_bmc_install_message="${post_bmc_install_message}. BMC Firmware activation is required"
 		fi
 		log "${post_bmc_install_message}"
+		touch ${BFB_DIR}/bmc_firmware_staged
 	fi
 
 	return $rc
@@ -650,7 +652,8 @@ update_dpu_golden_image()
 			config_image=${DPU_GI_PATH}/${CONFIG_IMAGE}
 			if [ ! -e "$config_image" ]; then
 				ilog "Config image does not exist: $config_image"
-				return 1
+				RC=$((RC+1))
+				return $RC
 			fi
 			sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-config
 			ilog "Copying $config_image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config"
@@ -669,7 +672,8 @@ update_dpu_golden_image()
 		fi
 	fi
 
-	return $rc
+	RC=$((RC+rc))
+	return $RC
 }
 
 update_nic_firmware_golden_image()
@@ -681,7 +685,7 @@ update_nic_firmware_golden_image()
 
 	if [ -z "$image" ]; then
 		ilog "NIC firmware Golden Image for $dpu_part_number was not found"
-		RC=$((RC+rc))
+		RC=$((RC+1))
 		return 1
 	fi
 
@@ -735,6 +739,7 @@ update_nic_firmware_golden_image()
 			return 1
 		fi
 	fi
+	RC=$((RC+rc))
 	return $rc
 }
 
@@ -910,6 +915,7 @@ bmc_activate()
 		if [ "$status" != "\"The request completed successfully."\" ]; then
 			rlog "ERR Failed to activate BMC or CEC firmware."
 			ilog "Failed to activate BMC or CEC firmware. Output: $output"
+			RC=$((RC+1))
 			return 1
 		else
 			log "INFO: BMC or CEC firmware activated successfully."
@@ -918,6 +924,7 @@ bmc_activate()
 		ilog "$output"
 	else
 		ilog "BMC link is not up. Skipping BMC or CEC firmware activation."
+		RC=$((RC+1))
 		return 1
 	fi
 }

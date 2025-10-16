@@ -2,6 +2,7 @@ UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
 
 update_atf_uefi()
 {
+	local rc=0
 	if function_exists pre_update_atf_uefi; then
 		log "INFO: Running pre_update_atf_uefi from bf.cfg"
 		pre_update_atf_uefi
@@ -12,10 +13,17 @@ update_atf_uefi()
 	fi
 
 	ilog "Updating ATF/UEFI:"
-	ilog "$(bfrec --capsule $1 2>&1)"
+	output=$(bfrec --capsule $1 2>&1)
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		ilog "ERR Failed to update ATF/UEFI:"
+		RC=$(( RC + 1 ))
+	fi
+	ilog "$output"
 
 	if function_exists post_update_atf_uefi; then
 		log "INFO: Running post_update_atf_uefi from bf.cfg"
 		post_update_atf_uefi
 	fi
+	return $rc
 }
