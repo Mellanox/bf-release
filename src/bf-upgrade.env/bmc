@@ -818,9 +818,9 @@ bmc_components_update()
 		bmc_custom_action1
 	fi
 
-	if [[ "$UPDATE_BMC_FW" == "yes" && "$BMC_LINK_UP" == "yes" ]]; then
-		update_bmc_fw
-		update_progress bmc_fw $?
+	if [[ "$UPDATE_CEC_FW" == "yes" && "$BMC_LINK_UP" == "yes" ]]; then
+		update_cec_fw
+		update_progress cec_fw $?
 	fi
 
 	if function_exists bmc_custom_action2; then
@@ -828,9 +828,9 @@ bmc_components_update()
 		bmc_custom_action2
 	fi
 
-	if [[ "$UPDATE_CEC_FW" == "yes" && "$BMC_LINK_UP" == "yes" ]]; then
-		update_cec_fw
-		update_progress cec_fw $?
+	if [[ "$UPDATE_BMC_FW" == "yes" && "$BMC_LINK_UP" == "yes" ]]; then
+		update_bmc_fw
+		update_progress bmc_fw $?
 	fi
 
 	if function_exists bmc_custom_action3; then
