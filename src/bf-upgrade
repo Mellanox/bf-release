@@ -454,8 +454,8 @@ else
 				DPU_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
 				NIC_FW_GI_PATH=$(readlink -f ./lib/firmware/mellanox/bmc/)
 			fi
-			DPU_GOLDEN_IMAGE=$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null)
-			NIC_FW_GOLDEN_IMAGE=$(/bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*bfb 2> /dev/null)
+			DPU_GOLDEN_IMAGE=$(/bin/ls ${DPU_GI_PATH}/bf3*preboot*.bfb 2> /dev/null || /bin/ls ${DPU_GI_PATH}/bf3*preboot*.pldm 2> /dev/null)
+			NIC_FW_GOLDEN_IMAGE=$(/bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*bfb 2> /dev/null || /bin/ls ${NIC_FW_GI_PATH}/*${dpu_part_number}*pldm 2> /dev/null)
 
 			bmc_components_update
 
