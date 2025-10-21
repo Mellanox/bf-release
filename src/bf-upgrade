@@ -330,7 +330,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-dpu-gi-v0 ]; then
 				DPU_GOLDEN_IMAGE=$(readlink -f dump-dpu-gi-v0)
 			else
-				log "ERR DPU Golden Image dump-dpu-gi-v0 was not found"
+				log "DPU Golden Image dump-dpu-gi-v0 was not found. Skipping..."
 				UPDATE_DPU_GOLDEN_IMAGE="no"
 			fi
 		fi
@@ -339,7 +339,7 @@ if [ $IS_BUNDLE -eq 0 ]; then
 			if [ -e dump-ramdisk-v0 ]; then
 				NIC_FW_GOLDEN_IMAGE=$(readlink -f dump-ramdisk-v0)
 			else
-				# log "ERR NIC firmware golden image dump-upgrade-image-v0 was not found"
+				log "NIC firmware golden image dump-upgrade-image-v0 was not found. Skipping..."
 				UPDATE_NIC_FW_GOLDEN_IMAGE="no"
 			fi
 		fi

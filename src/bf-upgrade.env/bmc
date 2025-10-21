@@ -66,17 +66,16 @@ reset_bmc_rshim_log()
 	ilog "Resetting BMC Rshim log"
 	is_bmc_rshim=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'test -e /dev/rshim0/misc && echo "yes" || echo "no"')
 	if [ "$is_bmc_rshim" == "no" ]; then
-		ilog "BMC Rshim is not found"
-		RC=$((RC+1))
-		return $RC
+		ilog "BMC Rshim is not found. Skipping BMC Rshim log reset..."
+		return
 	fi
 	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 1" > /dev/rshim0/misc')"
-	log "Resetting BMC Rshim log"
+	log "BMC Rshim log reset started"
 	# Wait for the misc to flush
 	sleep 10
 	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'cat /dev/rshim0/misc')"
 	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 0" > /dev/rshim0/misc')"
-	log "Rshim log cleared"
+	log "BMC Rshim log reset completed"
 }
 
 skip_bmc()
@@ -402,7 +401,7 @@ update_bmc_fw()
 	fi
 	ilog "Found BMC firmware image: $image"
 
-	BMC_IMAGE_VERSION=$(cat {${CHROOT_DIR},/}${BMC_PATH}/${bmc_pref}-bmc-fw.version 2> /dev/null | head -1)
+	# BMC_IMAGE_VERSION=$(cat {${CHROOT_DIR},/}${BMC_PATH}/${bmc_pref}-bmc-fw.version 2> /dev/null | head -1)
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
 		if [[ "$image" =~ tar ]]; then
 			# BlueField-2
@@ -489,7 +488,7 @@ update_cec_fw()
 	fi
 	ilog "Found CEC firmware image: $image"
 
-	CEC_IMAGE_VERSION=$(cat {${CHROOT_DIR},/}${CEC_PATH}/${bmc_pref}-cec-fw.version 2> /dev/null | head -1)
+	# CEC_IMAGE_VERSION=$(cat {${CHROOT_DIR},/}${CEC_PATH}/${bmc_pref}-cec-fw.version 2> /dev/null | head -1)
 	if [ -z "$CEC_IMAGE_VERSION" ]; then
 		CEC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 cec | cut -d '-' -f 2- | sed -e 's/ //g;s/.n02//')"
 	fi
