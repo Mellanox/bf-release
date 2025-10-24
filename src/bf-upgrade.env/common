@@ -43,6 +43,7 @@ step_weights["cec_fw"]=0
 step_weights["dpu_golden_image"]=0
 step_weights["nic_firmware_golden_image"]=0
 step_weights["finished"]=100
+step_weights["activate"]=100
 
 rlog()
 {

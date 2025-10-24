@@ -151,7 +151,7 @@ if is_mode_cancel $RSHIM_SP2; then
 	CANCEL_FLOW=1
 fi
 if [ $UPGRADE_FLOW -eq 0 ] && [ $ACTIVATE_FLOW -eq 0 ] && [ $CANCEL_FLOW -eq 0 ]; then
-	ilog "RSHIM SP2 is $RSHIM_SP2: Running Compatibility flow"
+	ilog "RSHIM SP2 is $RSHIM_SP2"
 	COMPATIBILITY_FLOW=1
 fi
 
@@ -224,17 +224,27 @@ fi # compatibility flow or upgrade flow - finish reading BFB
 cd ${BFB_DIR}
 if [ -e dump-boot-args-v0 ]; then
 	if ( bash -n dump-boot-args-v0 ); then
-		if (grep -qw "initrd=initramfsroot" dump-boot-args-v0); then
+		if (grep -qw "initrd=initramfs" dump-boot-args-v0); then
+			ilog "Detected non-flat bundle BFB"
 			IS_BUNDLE=1
+			COMPATIBILITY_FLOW=1
+			ACTIVATE_FLOW=1
 		else
-			log "Found bf.cfg"
+			ilog "Found bf.cfg"
 			. dump-boot-args-v0
 			if [ "$LFWP" == "yes" ]; then
-				log "LFWP upgrade flow including NIC Firmware activation"
+				ilog "LFWP upgrade flow including NIC Firmware activation"
 				ACTIVATE_FLOW=1
 			fi
 		fi
+	else
+		log "ERR Invalid bf.cfg"
+		exit 1
 	fi
+fi
+
+if [ $COMPATIBILITY_FLOW -eq 1 ]; then
+	ilog "Running Compatibility flow"
 fi
 
 if [ -e dump-initramfs-v0 ]; then
@@ -286,6 +296,7 @@ else
 	skip_bmc 0
 fi
 
+cd ${BFB_DIR}
 if [ $IS_BUNDLE -eq 0 ]; then
 	# PLDM BFB or Flat fwbundle BFB
 	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
@@ -482,6 +493,7 @@ if [ -e ${BFB_DIR}/nic_firmware_updated ]; then
 elif [ -e ${BFB_DIR}/nic_firmware_update_failed ]; then
 	if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
 		ilog "ERR NIC firmware update failed. Skipping activation."
+		ACTIVATE_FLOW=0
 		ACTVATION_STATUS=$(( ACTVATION_STATUS + 1 ))
 		RC=$(( RC + 1 ))
 		/bin/rm -f ${BFB_DIR}/nic_firmware_update_failed
@@ -507,25 +519,25 @@ if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ||
 fi
 
 if [ $UPGRADE_FLOW -eq 1 ]; then
-	if [ $ACTIVATE_FLOW -eq 1 ]; then
-		if [ $RC -eq 0 ]; then
+	if [ $RC -eq 0 ]; then
+		if [ $ACTIVATE_FLOW -eq 1 ]; then
 			log "Runtime upgrade finished successfully"
 		else
-			log "ERR Runtime upgrade finished with errors"
+			log "Runtime upgrade finished. Activate firmware to complete the update."
 		fi
 	else
-		update_progress finished $RC
-		log "Runtime upgrade finished. Activate firmware to complete the update."
+		log "ERR Runtime upgrade finished with errors"
 	fi
+	update_progress finished $RC
 fi
 
 if [ $ACTIVATE_FLOW -eq 1 ]; then
-	update_progress activate $((ACTVATION_STATUS + RC))
 	if [ $ACTVATION_STATUS -eq 0 ]; then
 		log "Activation finished successfully"
 	else
 		log "ERR Activation finished with errors"
 	fi
+	update_progress activate $((ACTVATION_STATUS + RC))
 fi
 
 sleep 3
