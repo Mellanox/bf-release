@@ -115,6 +115,25 @@ wait_for_bmc_ip()
     sleep 60
 }
 
+wait_for_bmc_ssh()
+{
+	ilog "Waiting for BMC SSH service to be ready..."
+	SECONDS=0
+	SSH_TIMEOUT=${SSH_TIMEOUT:-120}
+	while ! timeout 5 bash -c "< /dev/tcp/${BMC_IP}/22" 2>/dev/null
+	do
+		sleep 5
+		if [ $SECONDS -gt $SSH_TIMEOUT ]; then
+			ilog "- WARNING: SSH port 22 not responding on $BMC_IP after $SECONDS sec"
+			return 1
+		fi
+	done
+	# Give SSH daemon a moment to fully initialize
+	sleep 5
+	ilog "BMC SSH service is ready on $BMC_IP"
+	return 0
+}
+
 create_vlan()
 {
 	if [ "$BMC_LINK_UP" == "yes" ]; then
@@ -189,6 +208,10 @@ create_vlan()
 			ilog "$(ip addr show vlan4040 2>&1)"
 		fi
 	done
+
+	# Wait for SSH service to be ready before proceeding with SSH operations
+	wait_for_bmc_ssh
+
 	BMC_LINK_UP="yes"
 	return 0
 }
