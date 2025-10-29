@@ -53,6 +53,7 @@ export FLINT=mstflint
 if [ ! -x /usr/bin/mstflint ]; then
 	FLINT=flint
 fi
+RC=0
 
 is_SecureBoot=0
 if (mokutil --sb-state 2>&1 | grep -q "SecureBoot enabled"); then
@@ -159,5 +160,6 @@ if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
 	fi
 fi
 
+update_progress finished $RC
 log "Runtime upgrade finished"
 sleep 3
