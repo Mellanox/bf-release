@@ -157,6 +157,9 @@ update_progress()
 		return
 	fi
     ((current_progress += weight))
+    if [ $total_weight -eq 0 ]; then
+	    total_weight=$current_progress
+    fi
     local percentage=$((current_progress * 100 / total_weight))
 
 	if [[ $step == "finished" || $step == "activate" ]]; then
