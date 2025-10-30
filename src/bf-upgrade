@@ -199,6 +199,7 @@ if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
 	if [ ! -s "${UPGRADE_IMAGE}" ]; then
 		log "ERR Failed to receive a BFB"
 		/bin/rm -rf ${WDIR} ${BFB_DIR} $UPDATE_IN_PROGRESS_FILE
+		set_upgrade_progress 100 1
 		exit 1
 	fi
 
@@ -239,6 +240,7 @@ if [ -e dump-boot-args-v0 ]; then
 		fi
 	else
 		log "ERR Invalid bf.cfg"
+		set_upgrade_progress 100 1
 		exit 1
 	fi
 fi
@@ -408,6 +410,7 @@ else
 	#BUNDLE BFB that contains Linux kernel and initramfs
 	if [ ! -e dump-initramfs-v0 ]; then
 		log "ERR BFB's initramfs dump-initramfs-v0 was not found"
+		set_upgrade_progress 100 1
 		exit 1
 	fi
 
@@ -424,6 +427,7 @@ else
 	if [ "$USE_BFB_INSTALL" == "yes" ]; then
 		if [ ! -e ubuntu/install.sh ]; then
 			log "ERR ubuntu/install.sh was not found. Only bf-fwbundle is supported."
+			set_upgrade_progress 100 1
 			exit 1
 		fi
 		log "Running ubuntu/install.sh"
