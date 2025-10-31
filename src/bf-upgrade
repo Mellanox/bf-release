@@ -100,6 +100,7 @@ SCRIPTS_DIR=$(dirname $0)
 
 # Source a configuration if exists.
 [ -f /etc/bf-upgrade.conf ] && source /etc/bf-upgrade.conf
+[ -f /etc/bf.cfg ] && source /etc/bf.cfg
 
 [ ! -e /proc/acpi/button/lid/LID/state ] && exit 0
 
@@ -232,6 +233,7 @@ if [ -e dump-boot-args-v0 ]; then
 			ACTIVATE_FLOW=1
 		else
 			ilog "Found bf.cfg"
+			cat dump-boot-args-v0 > /etc/bf.cfg
 			. dump-boot-args-v0
 			if [ "$LFWP" == "yes" ]; then
 				ilog "LFWP upgrade flow including NIC Firmware activation"
