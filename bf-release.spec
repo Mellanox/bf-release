@@ -69,8 +69,10 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
-install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 install -d %{buildroot}/etc/sysconfig/network-scripts
+%if ! 0%{?oraclelinux}
+install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
+%endif
 
 # Network configuration
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
@@ -137,14 +139,8 @@ cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
 After=openibd.service
 Requires=openibd.service
 EOF
-%else
-cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
-[Unit]
-After=rdma-load-modules@infiniband.service
-Requires=rdma-load-modules@infiniband.service
-EOF
-%endif
 chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
+%endif
 
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
@@ -350,7 +346,9 @@ fi
 /etc/sysconfig/network-scripts/*
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
+%if ! 0%{?oraclelinux}
 /etc/systemd/system/openvswitch.service.d/override.conf
+%endif
 /etc/NetworkManager/conf.d/*
 %if 0%{?oraclelinux}
 /etc/dracut.conf.d/mlnx.conf
