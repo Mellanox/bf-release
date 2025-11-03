@@ -71,6 +71,7 @@ install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
 install -d %{buildroot}/etc/sysconfig/network-scripts
 %if ! 0%{?oraclelinux}
+install -d %{buildroot}/etc/systemd/system/openibd.service.d
 install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 %endif
 
@@ -134,6 +135,12 @@ EOF
 chmod 644 %{buildroot}/etc/systemd/system/network.service.d/override.conf
 
 %if ! 0%{?oraclelinux}
+cat > %{buildroot}/etc/systemd/system/openibd.service.d/override.conf << EOF
+[Unit]
+Wants=openvswitch-switch.service
+Before=openvswitch-switch.service
+EOF
+chmod 644 %{buildroot}/etc/systemd/system/openibd.service.d/override.conf
 cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
 [Unit]
 After=openibd.service
@@ -347,6 +354,7 @@ fi
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
 %if ! 0%{?oraclelinux}
+/etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
 %endif
 /etc/NetworkManager/conf.d/*
