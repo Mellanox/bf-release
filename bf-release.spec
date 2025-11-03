@@ -70,8 +70,11 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
-install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 install -d %{buildroot}/etc/sysconfig/network-scripts
+%if ! 0%{?oraclelinux}
+install -d %{buildroot}/etc/systemd/system/openibd.service.d
+install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
+%endif
 
 # Network configuration
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
@@ -132,16 +135,33 @@ TimeoutSec=%{NETWORKING_TIMEOUT}sec
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/network.service.d/override.conf
 
+%if ! 0%{?oraclelinux}
+cat > %{buildroot}/etc/systemd/system/openibd.service.d/override.conf << EOF
+[Unit]
+Wants=openvswitch-switch.service
+Before=openvswitch-switch.service
+EOF
+chmod 644 %{buildroot}/etc/systemd/system/openibd.service.d/override.conf
 cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
 [Unit]
 After=openibd.service
 Requires=openibd.service
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
+%endif
 
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
+
+%if 0%{?oraclelinux}
+install -d %{buildroot}/etc/dracut.conf.d
+cat > %{buildroot}/etc/dracut.conf.d/mlnx.conf << EOF
+omit_drivers+=" mlx5_core mlx5_ib ib_umad "
+omit_dracutmodules+=" rdma rdma-load-modules@infiniband.service rdma-load-modules@rdma.service rdma-load-modules@roce.service "
+EOF
+chmod 644 %{buildroot}/etc/dracut.conf.d/mlnx.conf
+%endif
 
 install -d %{buildroot}/etc/mellanox
 install -m 0644 src/mlnx-bf.conf	%{buildroot}/etc/mellanox
@@ -349,8 +369,14 @@ fi
 /etc/sysconfig/network-scripts/*
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
+%if ! 0%{?oraclelinux}
+/etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
+%endif
 /etc/NetworkManager/conf.d/*
+%if 0%{?oraclelinux}
+/etc/dracut.conf.d/mlnx.conf
+%endif
 
 %dir /etc/mellanox
 /etc/mellanox/*
