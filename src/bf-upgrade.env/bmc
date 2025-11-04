@@ -914,6 +914,9 @@ bmc_activate()
 			return 1
 		else
 			log "INFO: BMC firmware activated successfully."
+			if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
+				BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
+			fi
 			return 0
 		fi
 		ilog "$output"
