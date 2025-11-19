@@ -1,3 +1,9 @@
+bf-release (4.9.4) UNRELEASED; urgency=medium
+
+  * 4.9.4 release
+
+ -- Vladimir Sokolovsky <vlad@nvidia.com>  Wed, 19 Nov 2025 15:42:07 +0000
+
 bf-release (4.9.3) UNRELEASED; urgency=medium
 
   * 4.9.3 release
