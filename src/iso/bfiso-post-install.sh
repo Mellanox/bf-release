@@ -68,6 +68,7 @@ if [ ! -e /etc/udev/rules.d/92-oob_net.rules ]; then
 	cat > /etc/udev/rules.d/92-oob_net.rules << 'EOF'
 SUBSYSTEM=="net", ACTION=="add", DEVPATH=="/devices/platform/MLNXBF17:00/net/e*", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
 SUBSYSTEM=="net", ACTION=="add", DRIVERS=="virtio_net", PROGRAM="/bin/sh -c 'lspci -vv | grep -wq SimX'", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
+SUBSYSTEM=="net", ACTION=="add", DRIVERS=="lan743x", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
 EOF
 fi
 
