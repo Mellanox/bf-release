@@ -167,6 +167,7 @@ export UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
 export WITH_NIC_FW_UPDATE=${WITH_NIC_FW_UPDATE:-"yes"}
 export RUNTIME_UPGRADE="yes"
 export USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
+export COMPATIBILITY_ACTIVATION=${COMPATIBILITY_ACTIVATION:-"no"}
 
 if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
 	# Add a delay for the boot-fifo to be filled.
@@ -230,7 +231,9 @@ if [ -e dump-boot-args-v0 ]; then
 			ilog "Detected non-flat bundle BFB"
 			IS_BUNDLE=1
 			COMPATIBILITY_FLOW=1
-			ACTIVATE_FLOW=1
+			if [ "$COMPATIBILITY_ACTIVATION" == "yes" ]; then
+				ACTIVATE_FLOW=1
+			fi
 		else
 			ilog "Found bf.cfg"
 			cat dump-boot-args-v0 > /etc/bf.cfg
