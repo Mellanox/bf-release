@@ -291,8 +291,6 @@ if [[ -n "$BMC_USER" && -n "$BMC_PASSWORD" ]]; then
 				skip_bmc 0
 				RC=$(( RC + 1 ))
 			fi
-		else
-			BMC_LINK_UP="yes"
 		fi
 	else
 		log "WARN BMC_IP is not set"
@@ -301,6 +299,13 @@ if [[ -n "$BMC_USER" && -n "$BMC_PASSWORD" ]]; then
 else
 	log "WARN BMC credentials are not set"
 	skip_bmc 0
+fi
+
+BMC_LINK_UP="no"
+if [ -n "$BMC_IP" ]; then
+	if (ping -c 3 $BMC_IP > /dev/null 2>&1); then
+		BMC_LINK_UP="yes"
+	fi
 fi
 
 cd ${BFB_DIR}
