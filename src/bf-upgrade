@@ -235,9 +235,13 @@ if [ -e dump-boot-args-v0 ]; then
 				ACTIVATE_FLOW=1
 			fi
 		else
-			ilog "Found bf.cfg"
-			cat dump-boot-args-v0 > /etc/bf.cfg
-			. dump-boot-args-v0
+			if [ "$(grep -c 'rootwait' dump-boot-args-v0)" -eq 1 ] && [ "$(wc -l < dump-boot-args-v0)" -le 1 ]; then
+				ilog "dump-boot-args-v0: Only one line and it contains rootwait"
+			else
+				ilog "Found bf.cfg"
+				cat dump-boot-args-v0 > /etc/bf.cfg
+				. dump-boot-args-v0
+			fi
 			if [ "$LFWP" == "yes" ]; then
 				ilog "LFWP upgrade flow including NIC Firmware activation"
 				ACTIVATE_FLOW=1
