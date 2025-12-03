@@ -230,7 +230,6 @@ if [ -e dump-boot-args-v0 ]; then
 		if (grep -qw "initrd=initramfs" dump-boot-args-v0); then
 			ilog "Detected non-flat bundle BFB"
 			IS_BUNDLE=1
-			COMPATIBILITY_FLOW=1
 			if [ "$COMPATIBILITY_ACTIVATION" == "yes" ]; then
 				ACTIVATE_FLOW=1
 			fi
