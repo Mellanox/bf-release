@@ -136,12 +136,12 @@ set_upgrade_progress 0 0
 
 if is_mode_upgrade $RSHIM_SP2; then
 	ilog "RSHIM SP2 is $RSHIM_SP2: Running Upgrade flow"
+	touch $UPDATE_IN_PROGRESS_FILE
 	if [ $UPDATE_IN_PROGRESS -eq 1 ]; then
 		ilog "Previous update in progress. Awaiting for activation."
 		exit 1
 	fi
 	UPGRADE_FLOW=1
-	touch $UPDATE_IN_PROGRESS_FILE
 fi
 if is_mode_activate $RSHIM_SP2; then
 	ilog "RSHIM SP2 is $RSHIM_SP2: Running ActivateFirmware flow"
