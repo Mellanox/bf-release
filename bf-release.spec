@@ -89,28 +89,6 @@ GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
 
-cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-enp3s0f0s0 << EOF
-NAME="enp3s0f0s0"
-DEVICE="enp3s0f0s0"
-NM_CONTROLLED="no"
-DEVTIMEOUT=30
-PEERDNS="yes"
-ONBOOT="yes"
-BOOTPROTO="dhcp"
-TYPE=Ethernet
-EOF
-
-cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0 << EOF
-NAME="enp3s0f1s0"
-DEVICE="enp3s0f1s0"
-NM_CONTROLLED="no"
-DEVTIMEOUT=30
-PEERDNS="yes"
-ONBOOT="yes"
-BOOTPROTO="dhcp"
-TYPE=Ethernet
-EOF
-
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
 NAME="oob_net0"
 DEVICE="oob_net0"

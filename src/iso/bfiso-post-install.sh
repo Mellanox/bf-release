@@ -279,6 +279,79 @@ EOF
 
 } # End of configure_target_os
 
+configure_network()
+{
+	ilog "Configure network for SF interfaces:"
+	num_ports=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | wc -l)
+	if [ $num_ports -lt 1 ]; then
+		ilog "No network interfaces found"
+		return
+	fi
+	for port in $(seq 1 $num_ports); do
+		p=$((port - 1))
+		interface="enp3s0f${p}s0"
+		ilog "Configuring network interface $port"
+		if [ -d /etc/sysconfig/network-scripts/ ]; then
+			cat > /etc/sysconfig/network-scripts/ifcfg-${interface} << EOF
+NAME="${interface}"
+DEVICE="${interface}"
+NM_CONTROLLED="no"
+DEVTIMEOUT=30
+PEERDNS="yes"
+ONBOOT="yes"
+BOOTPROTO="dhcp"
+TYPE=Ethernet
+EOF
+			chmod 600 /etc/sysconfig/network-scripts/ifcfg-${interface}
+			ilog "Created configuration for network interface ${interface}: /etc/sysconfig/network-scripts/ifcfg-${interface}"
+		elif [ -d /etc/netplan/ ]; then
+			cat > /etc/netplan/60-mlnx-${p}.yaml << EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${interface}:
+      dhcp4: 'true'
+EOF
+			chmod 600 /etc/netplan/60-mlnx-${p}.yaml
+			ilog "Created configuration for network interface ${interface}: /etc/netplan/60-mlnx-${p}.yaml"
+		elif [ -d /etc/network/interfaces.d/ ]; then
+			cat > /etc/network/interfaces.d/${interface} << EOF
+auto ${interface}
+iface ${interface} inet dhcp
+EOF
+			chmod 600 /etc/network/interfaces.d/${interface}
+			ilog "Created configuration for network interface ${interface}: /etc/network/interfaces.d/${interface}"
+		else
+			ilog "Unknown network configuration environment"
+			return 1
+		fi
+	done
+
+	if [ $num_ports -eq 1 ]; then
+		ilog "Removing configuration for the second network interface on one port devices"
+		if [ -f /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0 ]; then
+			/bin/rm -f /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0
+			ilog "Removed configuration for network interface enp3s0f1s0: /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0"
+		fi
+		if [ -f /etc/network/interfaces.d/enp3s0f1s0 ]; then
+			/bin/rm -f /etc/network/interfaces.d/enp3s0f1s0
+			ilog "Removed configuration for network interface enp3s0f1s0: /etc/network/interfaces.d/enp3s0f1s0"
+		fi
+		if [ -f /etc/netplan/60-mlnx-1.yaml ]; then
+			/bin/rm -f /etc/netplan/60-mlnx-1.yaml
+			ilog "Removed configuration for network interface enp3s0f1s0: /etc/netplan/60-mlnx-1.yaml"
+		fi
+	fi
+
+	if [ -f /etc/netplan/60-mlnx.yaml ]; then
+		/bin/rm -f /etc/netplan/60-mlnx.yaml
+		ilog "Removed deprectated configuration file: /etc/netplan/60-mlnx.yaml"
+	fi
+
+	return 0
+}
+
 configure_dhcp()
 {
 	ilog "Configure dhcp:"
@@ -450,7 +523,7 @@ configure_grub()
 	fi
 
 	if (lscpu 2>&1 | grep -wq Grace); then
-		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 net.ifnames=0 biosdevname=0 iommu.passthrough=1\"@" /mnt/etc/default/grub
+		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 net.ifnames=0 biosdevname=0 iommu.passthrough=1\"@" /etc/default/grub
 	elif (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
@@ -1623,6 +1696,7 @@ global_installation_flow()
 
 	configure_target_os
 	configure_dhcp
+	configure_network
 	configure_sfs
 	configure_services
 	set_root_password
