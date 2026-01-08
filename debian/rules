@@ -145,5 +145,5 @@ endif
 override_dh_fixperms:
 	dh_fixperms
 ifeq ($(DIST_NAME_L), ubuntu)
-	chmod 600 debian/$(pname)/etc/netplan/60-mlnx.yaml
+	test -f debian/$(pname)/etc/netplan/60-mlnx.yaml && chmod 600 debian/$(pname)/etc/netplan/60-mlnx.yaml || true
 endif
