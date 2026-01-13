@@ -618,12 +618,6 @@ update_nic_firmware_golden_image()
 
 bmc_components_update()
 {
-	if [ "$RESET_BMC_RSHIM_LOG" == "yes" ]; then
-		if [[ -n "$BMC_SSH_USER" && -n "$BMC_SSH_PASSWORD" ]]; then
-			reset_bmc_rshim_log
-		fi
-	fi
-
 	if function_exists pre_bmc_components_update; then
 		log "INFO: Running pre_bmc_components_update from bf.cfg"
 		pre_bmc_components_update
@@ -690,6 +684,10 @@ bmc_components_update()
 
 	else
 		return
+	fi
+
+	if [ "$RESET_BMC_RSHIM_LOG" == "yes" ]; then
+		reset_bmc_rshim_log
 	fi
 
 	if function_exists bmc_custom_action1; then
