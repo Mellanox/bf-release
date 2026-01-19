@@ -3,22 +3,22 @@
 # Parse command line arguments
 OUTPUT_FORMAT="yaml"
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --json)
-            OUTPUT_FORMAT="json"
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--json]"
-            echo "  --json    Output in JSON format (default is YAML-like format)"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1" >&2
-            echo "Use --help for usage information" >&2
-            exit 1
-            ;;
-    esac
+	case $1 in
+		--json)
+			OUTPUT_FORMAT="json"
+			shift
+			;;
+		-h|--help)
+			echo "Usage: $0 [--json]"
+			echo "  --json    Output in JSON format (default is YAML-like format)"
+			exit 0
+			;;
+		*)
+			echo "Unknown option: $1" >&2
+			echo "Use --help for usage information" >&2
+			exit 1
+			;;
+	esac
 done
 
 BOOTIMG_LOCATION=/lib/firmware/mellanox/boot/default.bfb
@@ -34,10 +34,121 @@ get_version()
 	fi
 }
 
+parse_register_version()
+{
+	local output="$1"
+	local field_name="${2:-version}"
+	
+	echo "$output" | \
+		grep -E "^${field_name}\[[0-9]+\]" | \
+		sed -E "s/${field_name}\[([0-9]+)\].*\| *(0x[0-9a-fA-F]+)/\1 \2/" | \
+		sort -n -k1 | \
+		while read -r index hex_value; do
+			[[ "$hex_value" =~ ^0x[0-9a-fA-F]+$ ]] || continue
+			local decimal_value char_code
+			decimal_value=$((hex_value))
+			[ "$decimal_value" -eq 0 ] && break
+			char_code=$((decimal_value & 0xFF))
+			if [ "$char_code" -ge 32 ] && [ "$char_code" -le 126 ]; then
+				printf "\\$(printf '%03o' "$char_code")"
+			fi
+		done
+}
+
+get_misoc_version()
+{
+	local component="$1"
+	local query_pending="${2:-0}"
+	local mst_device="$3"
+	local type_num
+	
+	case "$component" in
+		"ATF")  type_num=0 ;;
+		"UEFI") type_num=1 ;;
+		"BMC")  type_num=2 ;;
+		"CEC")  type_num=3 ;;
+		*)      return 1 ;;
+	esac
+	
+	local output
+	output=$(mlxreg -d "$mst_device" --reg_name MISOC --get \
+		--index "type=${type_num},query_pending=${query_pending}" 2>&1)
+	
+	echo "$output" | grep -q "query_not_available.*0x00000001" && return 1
+	
+	parse_register_version "$output" version
+}
+
+get_mcqi_version()
+{
+	local query_pending="${1:-0}"
+	local mst_device="$2"
+	
+	local output
+	# Answer 'n' to mlxreg's confirmation prompt
+	output=$(printf "n" | mlxreg -d "$mst_device" --reg_name MCQI \
+		--set "info_type=1,data_size=0x34,offset=0" \
+		--indexes "component_index=0,device_index=1,read_pending_component=${query_pending},device_type=0" 2>&1)
+	
+	echo "$output" | grep -qE "Bad parameter|Failed" && return 1
+	
+	parse_register_version "$output" version_string
+}
+
+format_with_pending()
+{
+	local running="$1"
+	local pending="$2"
+	
+	if [ -n "$pending" ] && [ "$pending" != "$running" ]; then
+		echo "${running} (pending: ${pending})"
+	else
+		echo "$running"
+	fi
+}
+
+# Print firmware line with optional pending on separate line
+print_fw_line()
+{
+	local label="$1"
+	local running="$2"
+	local pending="$3"
+	
+	echo "- ${label}: ${running}"
+	if [ -n "$pending" ] && [ "$pending" != "$running" ]; then
+		echo "- ${label}: ${pending} (pending)"
+	fi
+}
+
+get_packaged_nic_fw()
+{
+	local fw_binary
+	fw_binary=$(ls /opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_* 2>/dev/null | head -1)
+	[ -n "$fw_binary" ] && "$fw_binary" --list 2>/dev/null | head -3 | tail -1 | awk '{print $4}'
+}
+
+get_bmc_fw()
+{
+	if [ -e /lib/firmware/mellanox/bmc/bf2-bmc-fw.version ]; then
+		cat /lib/firmware/mellanox/bmc/bf2-bmc-fw.version
+	elif [ -e /lib/firmware/mellanox/bmc/bf3-bmc-fw.version ]; then
+		cat /lib/firmware/mellanox/bmc/bf3-bmc-fw.version
+	fi
+}
+
+get_cec_fw()
+{
+	if [ -e /lib/firmware/mellanox/cec/bf2-cec-fw.version ]; then
+		cat /lib/firmware/mellanox/cec/bf2-cec-fw.version
+	elif [ -e /lib/firmware/mellanox/cec/bf3-cec-fw.version ]; then
+		cat /lib/firmware/mellanox/cec/bf3-cec-fw.version
+	fi
+}
+
 if [ -e "$BOOTIMG_LOCATION" ]; then
 	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
 	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
-                    cut -d':' -f 2)
+				    cut -d':' -f 2)
 	BOOTIMAGE_VER=$(get_version mlxbf-bootimages)
 	BUILD_BSP=$(echo "$BOOTIMAGE_VER" | sed -e 's/mlxbf-bootimages-//')
 
@@ -46,27 +157,63 @@ if [ -e "$BOOTIMG_LOCATION" ]; then
 	fi
 	if [ -n "$BFVER_VAL" ]; then
 		BUILD_ATF=$(echo "$BFVER_VAL" | grep ATF | awk '{ print $NF }' | head -n 1)
-                BUILD_UEFI=$(echo "$BFVER_VAL" | grep UEFI | awk '{ print $NF }' | head -n 1)
-                BUILD_BSP=$(echo "$BFVER_VAL" | grep BSP | awk '{ print $NF }' | head -n 1)
-        fi
+				BUILD_UEFI=$(echo "$BFVER_VAL" | grep UEFI | awk '{ print $NF }' | head -n 1)
+				BUILD_BSP=$(echo "$BFVER_VAL" | grep BSP | awk '{ print $NF }' | head -n 1)
+		fi
 
 fi
-
 
 OFED=`ofed_info -s 2> /dev/null | tr -d ':' | cut -d '-' -f2-`
 if [ ! -n "$OFED" ]; then
 	OFED="in-box"
 fi
 
-DEV_TYPE=$(mlxfwmanager | grep "Device Type:" | awk '{print $3}')
+MST_DEVICE=$(ls /dev/mst/*_pciconf0 2>/dev/null | head -1)
 
-if [ "$DEV_TYPE" == "BlueField" ]; then
-	NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41682 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
-elif [ "$DEV_TYPE" == "BlueField2" ]; then 
-    NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
-elif [ "$DEV_TYPE" == "BlueField3" ]; then
-    NIC_FW=`/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692 --list 2> /dev/null | head -3 | tail -1 | awk '{print $4}'`
+case "$MST_DEVICE" in
+	*mt41682*) DEVICE_GEN="bf1"; DEV_TYPE="BlueField" ;;
+	*mt41686*) DEVICE_GEN="bf2"; DEV_TYPE="BlueField2" ;;
+	*mt41692*) DEVICE_GEN="bf3"; DEV_TYPE="BlueField3" ;;
+	*)	     DEVICE_GEN="unknown"; DEV_TYPE="" ;;
+esac
+
+
+if [ -z "$DEV_TYPE" ]; then
+	echo "Warning: Unknown BlueField device type" >&2
 fi
+ATF_FW=""
+ATF_PENDING=""
+UEFI_FW=""
+UEFI_PENDING=""
+NIC_FW=""
+NIC_FW_PENDING=""
+BMC_FW=""
+BMC_FW_PENDING=""
+CEC_FW=""
+CEC_FW_PENDING=""
+
+if [ -n "$MST_DEVICE" ]; then
+	NIC_FW=$(get_mcqi_version 0 "$MST_DEVICE")
+	NIC_FW_PENDING=$(get_mcqi_version 1 "$MST_DEVICE")
+	
+	if [ "$DEVICE_GEN" = "bf3" ]; then
+		ATF_FW=$(get_misoc_version "ATF" 0 "$MST_DEVICE")
+		ATF_PENDING=$(get_misoc_version "ATF" 1 "$MST_DEVICE")
+		UEFI_FW=$(get_misoc_version "UEFI" 0 "$MST_DEVICE")
+		UEFI_PENDING=$(get_misoc_version "UEFI" 1 "$MST_DEVICE")
+		BMC_FW=$(get_misoc_version "BMC" 0 "$MST_DEVICE")
+		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$MST_DEVICE")
+		CEC_FW=$(get_misoc_version "CEC" 0 "$MST_DEVICE")
+		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$MST_DEVICE")
+	fi
+fi
+
+# Fallbacks if register queries failed
+[ -z "$ATF_FW" ] && ATF_FW="$BUILD_ATF"
+[ -z "$UEFI_FW" ] && UEFI_FW="$BUILD_UEFI"
+[ -z "$NIC_FW" ] && NIC_FW=$(get_packaged_nic_fw)
+[ -z "$BMC_FW" ] && BMC_FW=$(get_bmc_fw)
+[ -z "$CEC_FW" ] && CEC_FW=$(get_cec_fw)
 
 MLX_REGEX=$(get_version mlx-regex 2> /dev/null)
 
@@ -90,73 +237,55 @@ print_ofed()
 	fi
 }
 
-get_bmc_fw()
-{
-	if [ -e /lib/firmware/mellanox/bmc/bf2-bmc-fw.version ]; then
-		cat /lib/firmware/mellanox/bmc/bf2-bmc-fw.version
-	elif [ -e /lib/firmware/mellanox/bmc/bf3-bmc-fw.version ]; then
-		cat /lib/firmware/mellanox/bmc/bf3-bmc-fw.version
-	fi
-}
-
-get_cec_fw()
-{
-	if [ -e /lib/firmware/mellanox/cec/bf2-cec-fw.version ]; then
-		cat /lib/firmware/mellanox/cec/bf2-cec-fw.version
-	elif [ -e /lib/firmware/mellanox/cec/bf3-cec-fw.version ]; then
-		cat /lib/firmware/mellanox/cec/bf3-cec-fw.version
-	fi
-}
-
 # JSON utility functions
 json_escape() {
-    echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n'
+	echo "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g' | tr -d '\n'
 }
 
 json_add_item() {
-    local key="$1"
-    local value="$2"
-    local is_last="$3"
-    
-    if [ -n "$value" ] && [ "$value" != " " ]; then
-        if [ "$is_last" = "true" ]; then
-            echo "    \"$key\": \"$(json_escape "$value")\""
-        else
-            echo "    \"$key\": \"$(json_escape "$value")\","
-        fi
-    elif [ "$is_last" = "true" ]; then
-        echo "    \"$key\": null"
-    else
-        echo "    \"$key\": null,"
-    fi
+	local key="$1"
+	local value="$2"
+	local is_last="$3"
+	
+	if [ -n "$value" ] && [ "$value" != " " ]; then
+		if [ "$is_last" = "true" ]; then
+			echo "    \"$key\": \"$(json_escape "$value")\""
+		else
+			echo "    \"$key\": \"$(json_escape "$value")\","
+		fi
+	elif [ "$is_last" = "true" ]; then
+		echo "    \"$key\": null"
+	else
+		echo "    \"$key\": null,"
+	fi
 }
 
 json_add_array() {
-    local key="$1"
-    local items="$2"
-    local is_last="$3"
-    
-    if [ "$is_last" = "true" ]; then
-        echo "    \"$key\": ["
-    else
-        echo "    \"$key\": ["
-    fi
-    
-    if [ -n "$items" ]; then
-        echo "$items" | while IFS= read -r line; do
-            if [ -n "$line" ]; then
-                # Remove leading "- " from YAML format
-                clean_line=$(echo "$line" | sed 's/^- //')
-                echo "      \"$(json_escape "$clean_line")\","
-            fi
-        done | sed '$s/,$//'  # Remove trailing comma from last item
-    fi
-    
-    if [ "$is_last" = "true" ]; then
-        echo "    ]"
-    else
-        echo "    ],"
-    fi
+	local key="$1"
+	local items="$2"
+	local is_last="$3"
+	
+	if [ "$is_last" = "true" ]; then
+		echo "    \"$key\": ["
+	else
+		echo "    \"$key\": ["
+	fi
+	
+	if [ -n "$items" ]; then
+		echo "$items" | while IFS= read -r line; do
+			if [ -n "$line" ]; then
+				# Remove leading "- " from YAML format
+				clean_line=$(echo "$line" | sed 's/^- //')
+				echo "      \"$(json_escape "$clean_line")\","
+			fi
+		done | sed '$s/,$//'  # Remove trailing comma from last item
+	fi
+	
+	if [ "$is_last" = "true" ]; then
+		echo "    ]"
+	else
+		echo "    ],"
+	fi
 }
 
 # Collect all version information
@@ -164,135 +293,133 @@ DPDK_VERSION=$(/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:"
 KERNEL_VERSION=$(uname -r)
 MFT_VERSION=$(get_version_and_release mft)
 MSTFLINT_VERSION=$(get_version_and_release mstflint)
-BMC_FW=$(get_bmc_fw)
-CEC_FW=$(get_cec_fw)
 
 # Collect storage packages
 if [ "$DEV_TYPE" != "BlueField2" ]; then
-    STORAGE_PACKAGES=$(
-        version=$(get_version virtio-net-controller)
-        [ -n "$version" ] && echo "- $version"
-    )
+	STORAGE_PACKAGES=$(
+		version=$(get_version virtio-net-controller)
+		[ -n "$version" ] && echo "- $version"
+	)
 else
-    
-    STORAGE_PACKAGES=$(
-        version=$(get_version mlnx-libsnap)
-        [ -n "$version" ] && echo "- $version"
-        version=$(get_version mlnx-snap)
-        [ -n "$version" ] && echo "- $version"
-        version=$(get_version spdk)
-        [ -n "$version" ] && echo "- $version"
-        version=$(get_version virtio-net-controller)
-        [ -n "$version" ] && echo "- $version"
-    )
+	
+	STORAGE_PACKAGES=$(
+		version=$(get_version mlnx-libsnap)
+		[ -n "$version" ] && echo "- $version"
+		version=$(get_version mlnx-snap)
+		[ -n "$version" ] && echo "- $version"
+		version=$(get_version spdk)
+		[ -n "$version" ] && echo "- $version"
+		version=$(get_version virtio-net-controller)
+		[ -n "$version" ] && echo "- $version"
+	)
 fi
 
 # Collect DOCA packages
 if [ -e /etc/debian_version ]; then
-    DOCA_PACKAGES=$(
-        for doca in $(dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n); do
-            version=$(get_version $doca)
-            [ -n "$version" ] && echo "- $version"
-        done
-        version=$(get_version collectx-clxapi)
-        [ -n "$version" ] && echo "- collectx-clxapi: $version"
-    )
+	DOCA_PACKAGES=$(
+		for doca in $(dpkg --list | grep -E 'doca|rxp|dpa-compiler' | awk '{print $2}' | sort -n); do
+			version=$(get_version $doca)
+			[ -n "$version" ] && echo "- $version"
+		done
+		version=$(get_version collectx-clxapi)
+		[ -n "$version" ] && echo "- collectx-clxapi: $version"
+	)
 else
-    DOCA_PACKAGES=$(
-        for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do
-            version=$(get_version $doca)
-            [ -n "$version" ] && echo "- $version"
-        done
-        version=$(get_version collectx-clxapi)
-        [ -n "$version" ] && echo "- collectx-clxapi: $version"
-    )
+	DOCA_PACKAGES=$(
+		for doca in $(rpm -qa | grep -E 'doca|rxp|dpa-compiler' | sort -n); do
+			version=$(get_version $doca)
+			[ -n "$version" ] && echo "- $version"
+		done
+		version=$(get_version collectx-clxapi)
+		[ -n "$version" ] && echo "- collectx-clxapi: $version"
+	)
 fi
 
 # Collect FlexIO packages
 if [ -e /etc/debian_version ]; then
-    FLEXIO_PACKAGES=$(
-        for flexio in $(dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n); do
-            version=$(get_version $flexio)
-            [ -n "$version" ] && echo "- $version"
-        done
-    )
+	FLEXIO_PACKAGES=$(
+		for flexio in $(dpkg --list | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | awk '{print $2}' | sort -n); do
+			version=$(get_version $flexio)
+			[ -n "$version" ] && echo "- $version"
+		done
+	)
 else
-    FLEXIO_PACKAGES=$(
-        for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do
-            version=$(get_version $flexio)
-            [ -n "$version" ] && echo "- $version"
-        done
-    )
+	FLEXIO_PACKAGES=$(
+		for flexio in $(rpm -qa | grep -E 'dpacc|flexio|dpaeumgmt|dpa-gdbserver|dpa-stats' | sort -n); do
+			version=$(get_version $flexio)
+			[ -n "$version" ] && echo "- $version"
+		done
+	)
 fi
 
 # Collect SoC Platform packages
 if [ -e /etc/debian_version ]; then
-    SOC_PACKAGES=$(
-        for package in $(dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n); do
-            version=$(get_version $package)
-            [ -n "$version" ] && echo "- $version"
-        done
-    )
+	SOC_PACKAGES=$(
+		for package in $(dpkg --list | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | awk '{print $2}' | sort -n); do
+			version=$(get_version $package)
+			[ -n "$version" ] && echo "- $version"
+		done
+	)
 else
-    SOC_PACKAGES=$(
-        for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do
-            version=$(get_version $package)
-            [ -n "$version" ] && echo "- $version"
-        done
-    )
+	SOC_PACKAGES=$(
+		for package in $(rpm -qa | grep -E 'mlxbf-gige|sdhci-of-dwcmshc|tmfifo|tmfifo|gpio-mlxbf|pinctrl-mlxbf3|i2c-mlxbf|mlx-OpenIPMI|ipmb-dev-int|mlxbf-livefish|ipmb-host|mlxbf-p|pwr-mlxbf|mlx-trio|mmc-utils' | sort -n); do
+			version=$(get_version $package)
+			[ -n "$version" ] && echo "- $version"
+		done
+	)
 fi
 
 # Collect OFED packages if not in-box
 if [ "$OFED" != "in-box" ]; then
-    OFED_PACKAGES=$(print_ofed)
+	OFED_PACKAGES=$(print_ofed)
 fi
 
 # Output in the requested format
 if [ "$OUTPUT_FORMAT" = "json" ]; then
-    echo "{"
-    echo "  \"firmware\": {"
-    json_add_item "ATF" "$BUILD_ATF" "false"
-    json_add_item "UEFI" "$BUILD_UEFI" "false"
-    json_add_item "BSP" "$BUILD_BSP" "false"
-    json_add_item "NIC_Firmware" "$NIC_FW" "false"
-    json_add_item "BMC_Firmware" "$BMC_FW" "false"
-    json_add_item "CEC_Firmware" "$CEC_FW" "true"
-    echo "  },"
-    echo "  \"drivers\": {"
-    json_add_item "mlnx_dpdk" "$DPDK_VERSION" "false"
-    json_add_item "Kernel" "$KERNEL_VERSION" "true"
-    echo "  },"
-    echo "  \"tools\": {"
-    json_add_item "MFT" "$MFT_VERSION" "false"
-    if [ -n "$MLX_REGEX" ]; then
-        json_add_item "mstflint" "$MSTFLINT_VERSION" "false"
-        json_add_item "mlx_regex" "$MLX_REGEX" "true"
-    else
-        json_add_item "mstflint" "$MSTFLINT_VERSION" "true"
-    fi
-    echo "  },"
-    json_add_array "storage" "$STORAGE_PACKAGES" "false"
-    json_add_array "doca" "$DOCA_PACKAGES" "false"
-    json_add_array "flexio" "$FLEXIO_PACKAGES" "false"
-    if [ "$OFED" != "in-box" ]; then
-        json_add_array "soc_platform" "$SOC_PACKAGES" "false"
-        json_add_array "ofed" "$OFED_PACKAGES" "true"
-    else
-        json_add_array "soc_platform" "$SOC_PACKAGES" "true"
-    fi
-    echo "}"
+	echo "{"
+	echo "  \"firmware\": {"
+	json_add_item "ATF" "$(format_with_pending "$ATF_FW" "$ATF_PENDING")" "false"
+	json_add_item "UEFI" "$(format_with_pending "$UEFI_FW" "$UEFI_PENDING")" "false"
+	json_add_item "BSP" "$BUILD_BSP" "false"
+	json_add_item "NIC_Firmware" "$(format_with_pending "$NIC_FW" "$NIC_FW_PENDING")" "false"
+	json_add_item "BMC_Firmware" "$(format_with_pending "$BMC_FW" "$BMC_FW_PENDING")" "false"
+	json_add_item "CEC_Firmware" "$(format_with_pending "$CEC_FW" "$CEC_FW_PENDING")" "true"
+	echo "  },"
+	echo "  \"drivers\": {"
+	json_add_item "mlnx_dpdk" "$DPDK_VERSION" "false"
+	json_add_item "Kernel" "$KERNEL_VERSION" "true"
+	echo "  },"
+	echo "  \"tools\": {"
+	json_add_item "MFT" "$MFT_VERSION" "false"
+	if [ -n "$MLX_REGEX" ]; then
+		json_add_item "mstflint" "$MSTFLINT_VERSION" "false"
+		json_add_item "mlx_regex" "$MLX_REGEX" "true"
+	else
+		json_add_item "mstflint" "$MSTFLINT_VERSION" "true"
+	fi
+	echo "  },"
+	json_add_array "storage" "$STORAGE_PACKAGES" "false"
+	json_add_array "doca" "$DOCA_PACKAGES" "false"
+	json_add_array "flexio" "$FLEXIO_PACKAGES" "false"
+	if [ "$OFED" != "in-box" ]; then
+		json_add_array "soc_platform" "$SOC_PACKAGES" "false"
+		json_add_array "ofed" "$OFED_PACKAGES" "true"
+	else
+		json_add_array "soc_platform" "$SOC_PACKAGES" "true"
+	fi
+	echo "}"
 else
-    # Original YAML-like format
-    cat << EOF
-
-Firmware:
-- ATF: $BUILD_ATF
-- UEFI: $BUILD_UEFI
-- BSP: $BUILD_BSP
-- NIC Firmware: $NIC_FW
-- BMC Firmware: $BMC_FW
-- CEC Firmware: $CEC_FW
-
+	# Original YAML-like format
+	echo ""
+	echo "Firmware:"
+	print_fw_line "ATF" "$ATF_FW" "$ATF_PENDING"
+	print_fw_line "UEFI" "$UEFI_FW" "$UEFI_PENDING"
+	echo "- BSP: $BUILD_BSP"
+	print_fw_line "NIC Firmware" "$NIC_FW" "$NIC_FW_PENDING"
+	print_fw_line "BMC Firmware" "$BMC_FW" "$BMC_FW_PENDING"
+	print_fw_line "CEC Firmware" "$CEC_FW" "$CEC_FW_PENDING"
+	echo ""
+	cat << EOF
 Drivers:
 - mlnx-dpdk:$DPDK_VERSION
 - Kernel: $KERNEL_VERSION
@@ -301,11 +428,11 @@ Tools:
 - MFT: $MFT_VERSION
 - mstflint: $MSTFLINT_VERSION
 EOF
-    if [ -n "$MLX_REGEX" ]; then
-        echo "- mlx-regex: $MLX_REGEX"
-    fi
+	if [ -n "$MLX_REGEX" ]; then
+		echo "- mlx-regex: $MLX_REGEX"
+	fi
 
-    cat << EOF
+	cat << EOF
 
 Storage:
 $STORAGE_PACKAGES
@@ -320,13 +447,12 @@ SoC Platform:
 $SOC_PACKAGES
 EOF
 
-    if [ "$OFED" != "in-box" ]; then
-        cat << EOF
+	if [ "$OFED" != "in-box" ]; then
+		cat << EOF
 
 OFED:
 $OFED_PACKAGES
 
 EOF
-    fi
+	fi
 fi
-
