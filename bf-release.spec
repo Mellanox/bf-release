@@ -69,13 +69,16 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
+%if !0%{?rhcos}
 install -d %{buildroot}/etc/sysconfig/network-scripts
+%endif
 %if ! 0%{?oraclelinux}
 install -d %{buildroot}/etc/systemd/system/openibd.service.d
 install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 %endif
 
 # Network configuration
+%if !0%{?rhcos}
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -98,6 +101,7 @@ ONBOOT="yes"
 BOOTPROTO="dhcp"
 TYPE=Ethernet
 EOF
+%endif
 
 cat > %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d/override.conf << EOF
 [Service]
@@ -127,9 +131,11 @@ EOF
 chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
 %endif
 
+%if !0%{?rhcos}
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
+%endif
 
 %if 0%{?oraclelinux}
 install -d %{buildroot}/etc/dracut.conf.d
@@ -163,14 +169,13 @@ install -m 0755	src/bfb_admin.py     %{buildroot}/opt/mellanox/mlnx_snap/exec_fi
 install -m 0755	src/bfb_tool.py      %{buildroot}/opt/mellanox/mlnx_snap/exec_files/bfb_tool.py
 
 # K8s
+install -d %{buildroot}/var/lib/kubelet
+install -d %{buildroot}/etc/kubelet.d/
+%if !0%{?rhcos}
 install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
 install -d %{buildroot}/usr/lib/systemd/system/containerd.service.d
 install -d %{buildroot}/etc/cni/net.d
 install -d %{buildroot}/etc/containerd
-install -d %{buildroot}/var/lib/kubelet
-install -d %{buildroot}/usr/bin
-install -d %{buildroot}/%{_datadir}/%{name}
-install -d %{buildroot}/etc/kubelet.d/
 
 install -m 0644 src/config.toml      %{buildroot}/etc/containerd/config-mlnx.toml
 install -m 0644	src/90-containerd-mlnx-config.conf %{buildroot}/usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
@@ -178,6 +183,9 @@ install -m 0644	src/90-kubelet-bluefield.conf %{buildroot}/usr/lib/systemd/syste
 install -m 0644	src/99-loopback.conf %{buildroot}/etc/cni/net.d/99-loopback.conf
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
+%endif
+install -d %{buildroot}/usr/bin
+install -d %{buildroot}/%{_datadir}/%{name}
 
 # BFB Info
 install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
@@ -328,14 +336,18 @@ fi
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
+%if !0%{?rhcos}
 /etc/sysconfig/network-scripts/*
+%endif
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
 %if ! 0%{?oraclelinux}
 /etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
 %endif
+%if !0%{?rhcos}
 /etc/NetworkManager/conf.d/*
+%endif
 %if 0%{?oraclelinux}
 /etc/dracut.conf.d/mlnx.conf
 %endif
@@ -346,6 +358,10 @@ fi
 %dir /opt/mellanox/mlnx_snap/exec_files
 /opt/mellanox/mlnx_snap/exec_files/*
 
+%dir /var/lib/kubelet
+%dir /etc/kubelet.d
+
+%if !0%{?rhcos}
 /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
 
@@ -357,10 +373,8 @@ fi
 %dir /etc/containerd
 /etc/containerd/config-mlnx.toml
 
-%dir /var/lib/kubelet
 /var/lib/kubelet/config.yaml
-
-%dir /etc/kubelet.d
+%endif
 
 /usr/bin/bf-info
 
