@@ -63,6 +63,7 @@ override_dh_auto_install:
 	dh_installdirs -p$(pname)  etc/systemd/system/networking.service.d
 	dh_installdirs -p$(pname)  etc/systemd/system/netplan-ovs-cleanup.service.d
 	dh_installdirs -p$(pname)  etc/systemd/system/openvswitch-switch.service.d
+	dh_installdirs -p$(pname)  etc/systemd/system/ovsdb-server.service.d
 	dh_installdirs -p$(pname)  etc/systemd/system/openibd.service.d
 
 ifeq ($(DIST_NAME_L), ubuntu)
@@ -72,6 +73,7 @@ ifeq ($(DIST_NAME_L), ubuntu)
 	install -m 0644	src/override-netplan-ovs-cleanup        debian/$(pname)/etc/systemd/system/netplan-ovs-cleanup.service.d/override.conf
 endif
 	install -m 0644	src/override-openvswitch-switch          debian/$(pname)/etc/systemd/system/openvswitch-switch.service.d/override.conf
+	install -m 0644	src/override-openvswitch-switch          debian/$(pname)/etc/systemd/system/ovsdb-server.service.d/override.conf
 	install -m 0644	src/override-openibd                     debian/$(pname)/etc/systemd/system/openibd.service.d/override.conf
 
 	# Network configuration

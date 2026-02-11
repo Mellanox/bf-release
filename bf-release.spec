@@ -75,6 +75,7 @@ install -d %{buildroot}/etc/sysconfig/network-scripts
 %if ! 0%{?oraclelinux}
 install -d %{buildroot}/etc/systemd/system/openibd.service.d
 install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
+install -d %{buildroot}/etc/systemd/system/ovsdb-server.service.d
 %endif
 
 # Network configuration
@@ -129,6 +130,12 @@ After=openibd.service
 Requires=openibd.service
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf
+cat > %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf << EOF
+[Unit]
+After=openibd.service
+Requires=openibd.service
+EOF
+chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 
 %if !0%{?rhcos}
@@ -344,6 +351,7 @@ fi
 %if ! 0%{?oraclelinux}
 /etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
+/etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 %if !0%{?rhcos}
 /etc/NetworkManager/conf.d/*
