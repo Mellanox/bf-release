@@ -845,6 +845,11 @@ bmc_components_update()
 		bmc_reboot
 	fi
 
+	# Reset BMC installed version to allow script to query new BMC firmware version.
+	if [ "$BMC_FIRMWARE_UPDATED" == "yes" ]; then
+		BMC_INSTALLED_VERSION=""
+	fi
+
 	if function_exists bmc_custom_action4; then
 		log "INFO: Running bmc_custom_action4 from bf.cfg"
 		bmc_custom_action4
