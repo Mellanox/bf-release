@@ -80,7 +80,7 @@ unmount_partitions()
 
 # Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
-INITIAL_DATA_RECEIVE_TIMEOUT=20
+DATA_RECEIVE_TIMEOUT=40
 
 logfile=dpu.installation.log
 LOG=/var/log/$logfile
@@ -114,17 +114,15 @@ UPGRADE_IMAGE=${WDIR}/upgrade.bfb
 rm -f ${UPGRADE_IMAGE}* 2>/dev/null
 
 idle_cnt=0
-data_receive_timeout=$INITIAL_DATA_RECEIVE_TIMEOUT
-while [ $idle_cnt -lt $data_receive_timeout ]; do
+while [ $idle_cnt -lt $DATA_RECEIVE_TIMEOUT ]; do
   cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
   filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
   if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
-    # Done if no more data in 5 seconds.
+    # Done if no more data in DATA_RECEIVE_TIMEOUT seconds.
     idle_cnt=$((idle_cnt + 1))
     sleep 1
   else
     idle_cnt=0
-	data_receive_timeout=$IDLE_MAX
     cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
   fi
 done
