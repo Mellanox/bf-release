@@ -1,10 +1,14 @@
+set +H 2>/dev/null || true
 BMC_IP=${BMC_IP:-"192.168.240.1"}
 BMC_PORT=${BMC_PORT:-"443"}
-BMC_USER=${BMC_USER:-"root"}
+if [ ! -d /sys/firmware/efi/efivars ]; then
+	mount -t efivarfs none /sys/firmware/efi/efivars
+fi
+BMC_USER=${BMC_USER:-"$({ echo "$(cat /sys/firmware/efi/efivars/DPUBMCUsername-75a6cbf6-148c-487f-9ffa-7dad26e15801)" | tr -d '\006'; } 2>/dev/null)"}
 DEFAULT_BMC_PASSWORD="0penBmc"
 TMP_BMC_PASSWORD="Nvidia_12345!"
 RESET_BMC_PASSWORD=0
-BMC_PASSWORD=${BMC_PASSWORD:-""}
+BMC_PASSWORD=${BMC_PASSWORD:-"$({ echo "$(cat /sys/firmware/efi/efivars/DPUBMCPassword-75a6cbf6-148c-487f-9ffa-7dad26e15801)" | tr -d '\006'; } 2>/dev/null)"}
 BMC_SSH_USER=${BMC_SSH_USER:-"$BMC_USER"}
 BMC_SSH_PASSWORD=${BMC_SSH_PASSWORD:-"$BMC_PASSWORD"}
 NEW_BMC_PASSWORD=${NEW_BMC_PASSWORD:-""}
@@ -47,7 +51,12 @@ BMC_TMP_DIR=${BMC_TMP_DIR:-"/tmp"}
 
 CHROOT_DIR=${CHROOT_DIR:-"/mnt"}
 
-BMC_CREDENTIALS="'{\"username\":\"$BMC_USER\", \"password\":\"${BMC_PASSWORD}\"}'"
+get_bmc_credentials_json() {
+	jq -n -c --arg u "$BMC_USER" --arg p "$BMC_PASSWORD" '{username:$u, password:$p}'
+}
+
+BMC_CREDENTIALS=$(get_bmc_credentials_json 2>/dev/null) || BMC_CREDENTIALS=""
+
 BMC_LINK_UP="no"
 BMC_FIRMWARE_UPDATED="no"
 BMC_FIRMWARE_STAGED="no"
@@ -220,11 +229,11 @@ set_field_mode()
 
 get_bmc_token()
 {
-	cmd=$(echo curl -sSk -H \"Content-Type: application/json\" -X POST https://${BMC_IP}/login -d $BMC_CREDENTIALS)
-	BMC_TOKEN=$(eval $cmd | jq -r ' .token')
+	BMC_CREDENTIALS=$(get_bmc_credentials_json 2>/dev/null)
+	BMC_TOKEN=$(curl -sSk -H "Content-Type: application/json" -X POST "https://${BMC_IP}/login" -d "$BMC_CREDENTIALS" | jq -r ' .token')
 	if [[ -z "$BMC_TOKEN" || "$BMC_TOKEN" == "null" ]]; then
 		rlog "ERR Failed to get BMC token. Check BMC user/password"
-		ilog "- ERROR: Failed to get BMC token using command: $cmd. Check BMC user/password."
+		ilog "- ERROR: Failed to get BMC token. Check BMC user/password."
 		RC=$((RC+1))
 		return 1
 	fi
@@ -788,7 +797,7 @@ bmc_components_update()
 					fi
 					RESET_BMC_PASSWORD=1
 				fi
-				BMC_CREDENTIALS="'{\"username\":\"$BMC_USER\", \"password\":\"${BMC_PASSWORD}\"}'"
+				BMC_CREDENTIALS=$(get_bmc_credentials_json 2>/dev/null)
 			else
 				skip_bmc
 				return
