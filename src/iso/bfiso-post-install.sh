@@ -1419,6 +1419,8 @@ update_dpu_golden_image()
 	DPU_GI_INSTALLED_VERSION="$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -V 2> /dev/null)"
 	ilog "Installed DPU Golden Image version: $DPU_GI_INSTALLED_VERSION"
 
+	wait_bmc_task_complete
+
 	if [ "$DPU_GI_IMAGE_VERSION" == "$DPU_GI_INSTALLED_VERSION" ]; then
 		ilog "Installed DPU Golden Image version is the same as provided. Skipping DPU Golden Image update."
 	else
@@ -1463,6 +1465,8 @@ update_nic_firmware_golden_image()
 		return 0
 	fi
 
+	wait_bmc_task_complete
+
 	sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-nic
 	sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-nic
 	output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -w ${BMC_TMP_DIR}/golden-image-nic/$(basename $image) 2>&1)
@@ -1480,6 +1484,8 @@ update_certificates()
 {
 	rc=0
 	log "Updating certificates"
+
+	wait_bmc_task_complete
 
 	# Get the number of existing certificates
 	num_certs=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Systems/Bluefield/Oem/Nvidia/SystemConfigProfile/Truststore/NvidiaCertificates | jq '."Members@odata.count"')
