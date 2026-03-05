@@ -644,6 +644,8 @@ update_dpu_golden_image()
 			RC=$((RC+1))
 			return 1
 		fi
+
+		wait_bmc_task_complete
 	fi
 
 	if (echo "${BD_PSIDS}" | grep -qw "${PSID}"); then
