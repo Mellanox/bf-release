@@ -593,6 +593,8 @@ update_dpu_golden_image()
 		image_type="bfb"
 	fi
 
+	wait_bmc_task_complete
+
 	if [ "$image_type" == "bfb" ]; then
 		prepare_sshpass_environment
 
@@ -621,8 +623,6 @@ update_dpu_golden_image()
 		fi
 	elif [ "$image_type" == "pldm" ]; then
 
-		wait_bmc_task_complete
-
 		get_bmc_firmware_version
 
 		if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION_PLDM}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION_PLDM}" ]]; then
@@ -635,12 +635,13 @@ update_dpu_golden_image()
 			RC=$((RC+1))
 			return 1
 		fi
-
-		wait_bmc_task_complete
 	fi
 
 	if (echo "${BD_PSIDS}" | grep -qw "${PSID}"); then
 		if [ "X${UPLOAD_CONFIG_IMAGE}" == "Xyes" ]; then
+
+			wait_bmc_task_complete
+
 			if [ "X${GENERATE_CONFIG_IMAGE}" == "Xyes" ]; then
 				generate_config_image $image
 			fi
@@ -690,6 +691,8 @@ update_nic_firmware_golden_image()
 		image_type="bfb"
 	fi
 
+	wait_bmc_task_complete
+
 	if [ "$image_type" == "bfb" ]; then
 		prepare_sshpass_environment
 
@@ -716,8 +719,6 @@ update_nic_firmware_golden_image()
 		fi
 		ilog "$output"
 	elif [ "$image_type" == "pldm" ]; then
-
-		wait_bmc_task_complete
 
 		get_bmc_firmware_version
 
