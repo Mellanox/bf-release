@@ -763,6 +763,18 @@ EOF
 	done
 }
 
+configure_ovs()
+{
+	if (lspci -n -d 15b3: | grep -wq 'a2df'); then
+		if [ -e /etc/mellanox/mlnx-ovs.conf ]; then
+			ilog "Enable OVS DOCA on BlueField-4"
+			sed -i -e "s/OVS_DOCA=.*/OVS_DOCA=yes/" /etc/mellanox/mlnx-ovs.conf
+		else
+			ilog "OVS configuration file is missing: /etc/mellanox/mlnx-ovs.conf"
+		fi
+	fi
+}
+
 update_uefi_boot_entries()
 {
 	ilog "Updating EFI boot entries:"
@@ -1703,6 +1715,7 @@ global_installation_flow()
 	configure_dhcp
 	configure_network
 	configure_sfs
+	configure_ovs
 	configure_services
 	set_root_password
 	# create_initramfs
