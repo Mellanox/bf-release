@@ -1,3 +1,6 @@
 [Unit]
 Wants=openvswitch-switch.service
 Before=openvswitch-switch.service
+
+[Service]
+TimeoutStartSec=6min
