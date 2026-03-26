@@ -290,6 +290,8 @@ bmc_get_task_id()
 
 wait_bmc_task_complete()
 {
+	local tid=$1
+
 	copy_status=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Chassis/Bluefield_ERoT | jq -r ' .Oem.Nvidia.BackgroundCopyStatus')
 	if [ "X$copy_status" != "Xnull" ]; then
 		if [ "$copy_status" != "Completed" ]; then
@@ -309,11 +311,19 @@ wait_bmc_task_complete()
 		done
 	fi
 
-	bmc_get_task_id
+	if [ ! -z "$tid" ]; then
+		task_id=$tid
+		ilog "Received Task id: $task_id"
+	else
+		bmc_get_task_id
+	fi
+
 	if [ -z "${task_id}" ]; then
 		ilog "No active BMC task"
 		return
 	fi
+
+	ilog "wait_bmc_task_complete: Monitoring ${task_id}"
 	output=$(mktemp)
 	#Check upgrade progress (%).
 	get_bmc_token
@@ -450,7 +460,17 @@ update_bmc_fw()
 		BMC_FIRMWARE_UPDATED="yes"
 	fi
 
-	wait_bmc_task_complete
+	if (echo $output | grep -q "internal service error"); then
+		rc=1
+		RC=$((RC+1))
+		log "ERR Failed to update BMC firmware"
+		return $rc
+	fi
+
+	tid=$(echo $output | jq -r '."@odata.id"')
+	ilog "BMC Firmware update task id: $tid"
+
+	wait_bmc_task_complete $tid
 	if [ "$BMC_FIRMWARE_UPDATED" == "yes" ]; then
 		post_bmc_install_message="INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}"
 		if [ "$BMC_REBOOT" != "yes" ]; then
@@ -533,8 +553,17 @@ update_cec_fw()
 		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
 	fi
 	ilog "CEC Firmware update: $output"
+	if (echo $output | grep -q "internal service error"); then
+		rc=1
+		RC=$((RC+1))
+		log "ERR Failed to update CEC firmware"
+		return $rc
+	fi
 
-	wait_bmc_task_complete
+	tid=$(echo $output | jq -r '."@odata.id"')
+	ilog "CEC Firmware update task id: $tid"
+
+	wait_bmc_task_complete $tid
 	if [ "$CEC_REBOOT" == "yes" ]; then
 		if [[ $(echo -e "${CEC_MIN_RESET_VERSION}\n${CEC_INSTALLED_VERSION}" | sort -V | head -n1) == "${CEC_MIN_RESET_VERSION}" ]]; then
 			log "Rebooting CEC..."
@@ -628,7 +657,18 @@ update_dpu_golden_image()
 		if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION_PLDM}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION_PLDM}" ]]; then
 			ilog "curl -k -H \"X-Auth-Token: <BMC_TOKEN>\" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F \"UpdateFile=@${image};type=application/octet-stream\""
 			output=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F "UpdateFile=@${image};type=application/octet-stream" 2>&1)
-			ilog "BMC Firmware update: $output"
+			ilog "DPU Golden Image update: $output"
+			if (echo $output | grep -q "internal service error"); then
+				rc=1
+				RC=$((RC+1))
+				log "ERR Failed to update DPU Golden Image"
+				return $rc
+			fi
+
+			tid=$(echo $output | jq -r '."@odata.id"')
+			ilog "DPU Golden Image update task id: $tid"
+			wait_bmc_task_complete $tid
+
 		else
 			ilog "DPU Golden Image update is not supported for BMC firmware version $BMC_INSTALLED_VERSION"
 			ilog "Please update BMC firmware to version $BMC_MIN_MULTIPART_VERSION_PLDM or higher"
@@ -725,7 +765,18 @@ update_nic_firmware_golden_image()
 		if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION_PLDM}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION_PLDM}" ]]; then
 			ilog "curl -k -H \"X-Auth-Token: <BMC_TOKEN>\" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F \"UpdateFile=@${image};type=application/octet-stream\""
 			output=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F "UpdateFile=@${image};type=application/octet-stream" 2>&1)
-			ilog "BMC Firmware update: $output"
+			ilog "NIC firmware Golden Image update: $output"
+			if (echo $output | grep -q "internal service error"); then
+				rc=1
+				RC=$((RC+1))
+				log "ERR Failed to update NIC firmware Golden Image"
+				return $rc
+			fi
+
+			tid=$(echo $output | jq -r '."@odata.id"')
+			ilog "NIC Firmware Golden Image update task id: $tid"
+			wait_bmc_task_complete $tid
+
 		else
 			ilog "NIC Firmware Golden Image update is not supported for BMC firmware version $BMC_INSTALLED_VERSION"
 			ilog "Please update BMC firmware to version $BMC_MIN_MULTIPART_VERSION_PLDM or higher"
