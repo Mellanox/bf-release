@@ -10,11 +10,18 @@ DIST_NAME_L := $(shell lsb_release -si | tr A-Z a-z)
 DIST_VERSION := $(shell lsb_release -sr)
 DIST_MAJOR := $(shell lsb_release -sr | cut -d '.' -f 1)
 OFED_VERSION := $(shell ofed_info -n 2> /dev/null || echo inbox)
-BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules | grep -o [0-9].*bluefield | head -1)
+BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules 2>/dev/null | grep -o '[0-9].*bluefield' | head -1)
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
 
 BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
-ARCH := aarch64
+# DOCA public repo: Debian uses debian<ver>-<kernel maj.min> and arm64-dpu (not debian12/aarch64).
+DOCA_KERNEL_MAJMIN := $(shell k='$(BF_KERNEL)'; [ -z "$$k" ] && k=$$(uname -r); echo "$$k" | cut -d. -f1,2)
+DOCA_REPO_ARCH := arm64-dpu
+ifeq ($(DIST_NAME_L),debian)
+DOCA_REPO_DIST := debian$(DIST_MAJOR)-$(DOCA_KERNEL_MAJMIN)
+else
+DOCA_REPO_DIST := $(DIST_NAME_L)$(DIST_VERSION)
+endif
 
 %:
 	dh $@
@@ -47,8 +54,8 @@ override_dh_auto_install:
 	echo "# For more information, refer to http://linux.mellanox.com" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DOCA_REPO_DIST)/$(DOCA_REPO_ARCH)/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DOCA_REPO_DIST)/$(DOCA_REPO_ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
 
 	# UDEV rules
