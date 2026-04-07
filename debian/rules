@@ -56,7 +56,7 @@ override_dh_auto_install:
 	echo "# For more information, refer to http://linux.mellanox.com" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DOCA_REPO_DIST)/$(DOCA_REPO_ARCH)/vidia-doca-debian-gpg-public-key.asc | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest/$(DOCA_REPO_DIST)/$(DOCA_REPO_ARCH)/nvidia-doca-debian-gpg-public-key.asc | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest/$(DOCA_REPO_DIST)/$(DOCA_REPO_ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
 
