@@ -78,10 +78,41 @@ unmount_partitions()
     done
 }
 
+get_bfb()
+{
+	local bfb_file=$1
+
+	# Add a delay for the boot-fifo to be filled.
+	sleep $IDLE_MAX
+
+	idle_cnt=0
+	while [ $idle_cnt -lt $DATA_RECEIVE_TIMEOUT ]; do
+		cat "$BOOTFIFO" > ${bfb_file}.tmp
+		[ -e ${bfb_file}.tmp ] && filesize=$(du -b ${bfb_file}.tmp | awk '{print $1}')
+		if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
+			# Done if no more data in DATA_RECEIVE_TIMEOUT seconds.
+			idle_cnt=$((idle_cnt + 1))
+			sleep 1
+		else
+			idle_cnt=0
+			cat ${bfb_file}.tmp >> ${bfb_file}
+		fi
+	done
+	/bin/rm -f ${bfb_file}.tmp
+}
+
+cleanup()
+{
+	/bin/rm -rf $(readlink -f ${BFB_DIR})
+	/bin/rm -rf ${BFB_DIR}
+	/bin/rm -f $UPDATE_IN_PROGRESS_FILE
+	/bin/rm -rf ${WDIR}
+}
+
 RC=0
 ACTVATION_STATUS=0
-# Maximum idle time in seconds to decide no more data from BOOTFIFO.
 IDLE_MAX=5
+# Maximum idle time in seconds to decide no more data from BOOTFIFO.
 DATA_RECEIVE_TIMEOUT=40
 
 logfile=dpu.installation.log
@@ -117,44 +148,81 @@ state=$(cat /proc/acpi/button/lid/LID/state | awk '{print $2}' 2>/dev/null)
 TMPDIR=${TMPDIR:-"/tmp"}
 WDIR=${WDIR:-"$(mktemp -d ${TMPDIR}/bfb.XXXXXX)"}
 BFB_DIR=${TMPDIR}/bfb
-UPDATE_IN_PROGRESS=0
+# Maximum time in seconds to wait for activation or cancellation of previous update.
+# 0 means no timeout.
+PRE_ACTIVATION_TIMEOUT=${PRE_ACTIVATION_TIMEOUT:-0}
 UPDATE_IN_PROGRESS_FILE=${TMPDIR}/update_in_progress
-if [ -e $UPDATE_IN_PROGRESS_FILE ]; then
-	ilog "Update in progress. Awaiting for activation."
-	UPDATE_IN_PROGRESS=1
-	/bin/rm -rf $UPDATE_IN_PROGRESS_FILE
-else
-	/bin/rm -rf ${BFB_DIR}/* ${BFB_DIR}
-	/bin/ln -sf ${WDIR} ${BFB_DIR}
-fi
 
 # Read 8 bytes starting from the 5th byte (offset 4)
 RSHIM_SP2=$(read_SP2)
 ilog "UINT64 value starting from the 5th byte (little-endian): $RSHIM_SP2"
 
-set_upgrade_progress 0 0
-
 if is_mode_upgrade $RSHIM_SP2; then
-	ilog "RSHIM SP2 is $RSHIM_SP2: Running Upgrade flow"
-	touch $UPDATE_IN_PROGRESS_FILE
-	if [ $UPDATE_IN_PROGRESS -eq 1 ]; then
-		ilog "Previous update in progress. Awaiting for activation."
-		exit 1
-	fi
+	ilog "RSHIM SP2 is $RSHIM_SP2: Detected Upgrade flow"
 	UPGRADE_FLOW=1
 fi
 if is_mode_activate $RSHIM_SP2; then
-	ilog "RSHIM SP2 is $RSHIM_SP2: Running ActivateFirmware flow"
+	ilog "RSHIM SP2 is $RSHIM_SP2: Detected ActivateFirmware flow"
 	ACTIVATE_FLOW=1
 fi
 if is_mode_cancel $RSHIM_SP2; then
-	ilog "RSHIM SP2 is $RSHIM_SP2: Running Cancel flow"
+	ilog "RSHIM SP2 is $RSHIM_SP2: Detected Cancel flow"
 	CANCEL_FLOW=1
 fi
 if [ $UPGRADE_FLOW -eq 0 ] && [ $ACTIVATE_FLOW -eq 0 ] && [ $CANCEL_FLOW -eq 0 ]; then
-	ilog "RSHIM SP2 is $RSHIM_SP2"
+	ilog "RSHIM SP2 is $RSHIM_SP2: Setting Compatibility flow"
 	COMPATIBILITY_FLOW=1
 fi
+
+if [[ -e $UPDATE_IN_PROGRESS_FILE && $UPGRADE_FLOW -eq 1 ]]; then
+	# Check for a timeout
+	timestamp=$(awk '{print $1}' $UPDATE_IN_PROGRESS_FILE)
+	now=$(awk '{print $1}' /proc/uptime)
+	elapsed=$((now - timestamp))
+	if [[ $elapsed -lt $PRE_ACTIVATION_TIMEOUT || $PRE_ACTIVATION_TIMEOUT -eq 0 ]]; then
+		ilog "Previous update is in progress. Awaiting for activation or cancellation."
+		log "Rejecting new upgrade. Exiting..."
+		UPGRADE_IMAGE=${WDIR}/ignore_upgrade.bfb
+		get_bfb ${UPGRADE_IMAGE}
+		/bin/rm -rf ${WDIR}
+		exit 1
+	else
+		ilog "Previous update is timed out. Continuing with new upgrade."
+		/bin/rm -rf $(readlink -f ${BFB_DIR})
+		/bin/rm -rf ${BFB_DIR}
+	fi
+fi
+
+if [[ -e $UPDATE_IN_PROGRESS_FILE && $UPGRADE_FLOW -eq 0 && $ACTIVATE_FLOW -eq 1 ]]; then
+	# Check for a timeout
+	timestamp=$(awk '{print $1}' $UPDATE_IN_PROGRESS_FILE)
+	now=$(awk '{print $1}' /proc/uptime)
+	elapsed=$((now - timestamp))
+	if [[ $elapsed -lt $PRE_ACTIVATION_TIMEOUT || $PRE_ACTIVATION_TIMEOUT -eq 0 ]]; then
+		ilog "Continuing with activation."
+	else
+		ilog "Update timed out. Exiting without activation..."
+		cleanup
+		exit 1
+	fi
+fi
+
+if [[ -e $UPDATE_IN_PROGRESS_FILE && $CANCEL_FLOW -eq 1 ]]; then
+	ilog "Cancelling previous update."
+	cleanup
+	exit 0
+fi
+
+if [[ ! -e $UPDATE_IN_PROGRESS_FILE && $CANCEL_FLOW -eq 1 ]]; then
+	log "ERR No update in progress. Exiting without cancellation..."
+	exit 1
+fi
+
+if [ $UPGRADE_FLOW -eq 1 ]; then
+	ilog "RSHIM SP2 is $RSHIM_SP2: Running Upgrade flow"
+	awk '{print $1}' /proc/uptime > $UPDATE_IN_PROGRESS_FILE
+fi
+set_upgrade_progress 0 0
 
 # IS_BUNDLE is set to 1 if the BFB is a bf-bundle or bf-fwbundle (non-flat) BFB
 IS_BUNDLE=0
@@ -170,34 +238,16 @@ export USE_BFB_INSTALL=${USE_BFB_INSTALL:-"no"}
 export COMPATIBILITY_ACTIVATION=${COMPATIBILITY_ACTIVATION:-"no"}
 
 if [[ $COMPATIBILITY_FLOW -eq 1 || $UPGRADE_FLOW -eq 1 ]]; then
-	# Add a delay for the boot-fifo to be filled.
-	sleep $IDLE_MAX
-
-	# Example code to fetch the upgrade bfb.
-	# !!!Use eMMC or NVME to avoid running out of memory in NIC mode.!!!
+	/bin/ln -snf ${WDIR} ${BFB_DIR}
 	UPGRADE_IMAGE=${WDIR}/upgrade.bfb
-	rm -f ${UPGRADE_IMAGE}* 2>/dev/null
+	/bin/rm -f ${UPGRADE_IMAGE}* 2>/dev/null
+	get_bfb ${UPGRADE_IMAGE}
 
-	idle_cnt=0
-	while [ $idle_cnt -lt $DATA_RECEIVE_TIMEOUT ]; do
-		cat "$BOOTFIFO" > ${UPGRADE_IMAGE}.tmp
-		[ -e ${UPGRADE_IMAGE}.tmp ] && filesize=$(du -b ${UPGRADE_IMAGE}.tmp | awk '{print $1}')
-		if [[ -z "$filesize" || ."$filesize" == ."0" ]]; then
-			# Done if no more data in DATA_RECEIVE_TIMEOUT seconds.
-			idle_cnt=$((idle_cnt + 1))
-			sleep 1
-		else
-			idle_cnt=0
-			cat ${UPGRADE_IMAGE}.tmp >> ${UPGRADE_IMAGE}
-		fi
-	done
-
-	/bin/rm -f ${UPGRADE_IMAGE}.tmp
 	cd ${WDIR}
 	/bin/rm -f dump-*
 
 	if [ ! -s "${UPGRADE_IMAGE}" ]; then
-		log "ERR Failed to receive a BFB"
+		log "ERR Failed to receive a BFB. Exiting..."
 		/bin/rm -rf ${WDIR} ${BFB_DIR} $UPDATE_IN_PROGRESS_FILE
 		set_upgrade_progress 100 1
 		exit 1
@@ -522,13 +572,11 @@ if [[ $ACTIVATE_FLOW -eq 1 || $CANCEL_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ||
 		log "ERR $0 flow failed with RC: $RC"
 		ilog "Removing BFB directory: $BFB_DIR"
 	fi
-	cd ${WDIR}
-	/bin/rm -rf dump-*
-	cd ..
 
 	if [ ! -d ${WDIR}/initramfs/dev/pts ]; then
-		/bin/rm -rf ${WDIR} ${BFB_DIR} $UPDATE_IN_PROGRESS_FILE
+		cleanup
 	else
+		/bin/rm -rf ${WDIR}/dump-*
 		ilog "Failed to unmount ${WDIR}/initramfs"
 	fi
 fi
@@ -539,6 +587,8 @@ if [ $UPGRADE_FLOW -eq 1 ]; then
 			log "Runtime upgrade finished successfully"
 		else
 			log "Runtime upgrade finished. Activate firmware to complete the update."
+			# Update the update_in_progress file with the current timestamp
+			awk '{print $1}' /proc/uptime > $UPDATE_IN_PROGRESS_FILE
 		fi
 	else
 		log "ERR Runtime upgrade finished with errors"
@@ -552,6 +602,7 @@ if [ $ACTIVATE_FLOW -eq 1 ]; then
 	else
 		log "ERR Activation finished with errors"
 	fi
+	cleanup
 	update_progress activate $((ACTVATION_STATUS + RC))
 fi
 
