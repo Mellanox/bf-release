@@ -127,6 +127,7 @@ fw_bin_update()
 	if ! is_nic_fw_update_required; then
 		return 0
 	fi
+	log "Updating NIC firmware..."
 	output=$($FLINT -d $flint_dev -i $NIC_FW_BIN -y b 2>&1)
 	rc=$?
 	if [ $rc -eq 0 ]; then
