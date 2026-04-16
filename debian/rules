@@ -13,14 +13,17 @@ OFED_VERSION := $(shell ofed_info -n 2> /dev/null || echo inbox)
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
 
 BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
-# DOCA: …/latest/<dist>/arm64-dpu. Default: same as distro tag (debian12, ubuntu22.04, …). Debian + mlnx-release: override with debian<N>-<kernel>.
 DOCA_REPO_ARCH := arm64-dpu
 DOCA_REPO_DIST := $(DIST_NAME_L)$(DIST_VERSION)
 ifeq ($(DIST_NAME_L),debian)
 ifneq ($(wildcard /etc/mlnx-release),)
-DOCA_K := $(shell grep -oE 'debian-[0-9]+_[0-9]+\.[0-9]+' /etc/mlnx-release 2>/dev/null | head -1 | sed 's/.*_//')
+DOCA_K := $(shell grep -oE 'debian-[0-9]+_[0-9]+\.[0-9]+' /etc/mlnx-release | head -1 | sed 's/.*_//')
 ifneq ($(DOCA_K),)
 DOCA_REPO_DIST := debian$(DIST_MAJOR)-$(DOCA_K)
+endif
+else
+ifeq ($(DIST_MAJOR),12)
+DOCA_REPO_DIST := debian12-5.15
 endif
 endif
 endif
