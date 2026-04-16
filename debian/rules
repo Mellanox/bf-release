@@ -16,11 +16,9 @@ BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
 DOCA_REPO_ARCH := arm64-dpu
 DOCA_REPO_DIST := $(DIST_NAME_L)$(DIST_VERSION)
 ifeq ($(DIST_NAME_L),debian)
-ifneq ($(wildcard /etc/mlnx-release),)
 DOCA_K := $(shell grep -oE 'debian-[0-9]+_[0-9]+\.[0-9]+' /etc/mlnx-release | head -1 | sed 's/.*_//')
 ifneq ($(DOCA_K),)
 DOCA_REPO_DIST := debian$(DIST_MAJOR)-$(DOCA_K)
-endif
 else
 ifeq ($(DIST_MAJOR),12)
 DOCA_REPO_DIST := debian12-5.15
