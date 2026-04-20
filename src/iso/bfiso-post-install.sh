@@ -1073,7 +1073,7 @@ prepare_sshpass_environment()
 get_field_mode()
 {
     mode=$(ipmitool raw 0x32 0x68 2> /dev/null | tr -d ' ')
-    return $mode
+    echo "$mode"
 }
 
 set_field_mode()
