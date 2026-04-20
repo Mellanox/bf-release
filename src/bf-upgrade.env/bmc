@@ -881,7 +881,7 @@ bmc_components_update()
 						fi
 						BMC_PASSWORD="$NEW_BMC_PASSWORD"
 					else
-						update_progress bmc_password 0
+						update_progress bmc_password 1
 						skip_bmc
 						return
 					fi
