@@ -545,6 +545,8 @@ update_cec_fw()
 		else
 			log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
 		fi
+	else
+		log "INFO: CEC firmware was updated to ${CEC_IMAGE_VERSION}. Host power cycle is required"
 	fi
 	if [ "$BMC_UPGRADE_RESET" == "yes" ]; then
 		BMC_UPGRADE_RESET=1 bfcfg -f /dev/null
