@@ -28,8 +28,6 @@ src/crictl.yaml
 
 ~~src/crictl~~ install from [cri-tools](https://github.com/kubernetes-sigs/cri-tools#debrpm-packages)
 
-src/override-networkd-wait-online - networkd-wait-online override.conf
-
 src/override-networking - networking override.conf
 
 src/override-netplan-ovs-cleanup - netplan-ovs-cleanup override.conf
