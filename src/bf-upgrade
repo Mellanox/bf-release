@@ -488,7 +488,7 @@ else
 	echo "UPDATE_DPU_OS=no" >> ./etc/bf.cfg
 	echo "RUNTIME_UPGRADE=$RUNTIME_UPGRADE" >> ./etc/bf.cfg
 	if (ping -c 3 $BMC_IP > /dev/null 2>&1); then
-	    BMC_LINK_UP="yes" >> ./etc/bf.cfg
+	    echo "BMC_LINK_UP=yes" >> ./etc/bf.cfg
 	fi
 	if [ "$USE_BFB_INSTALL" == "yes" ]; then
 		if [ ! -e ubuntu/install.sh ]; then
