@@ -176,8 +176,8 @@ fi
 
 if [[ -e $UPDATE_IN_PROGRESS_FILE && $UPGRADE_FLOW -eq 1 ]]; then
 	# Check for a timeout
-	timestamp=$(awk '{print $1}' $UPDATE_IN_PROGRESS_FILE)
-	now=$(awk '{print $1}' /proc/uptime)
+	timestamp=$(awk '{print int($1)}' $UPDATE_IN_PROGRESS_FILE)
+	now=$(awk '{print int($1)}' /proc/uptime)
 	elapsed=$((now - timestamp))
 	if [[ $elapsed -lt $PRE_ACTIVATION_TIMEOUT || $PRE_ACTIVATION_TIMEOUT -eq 0 ]]; then
 		ilog "Previous update is in progress. Awaiting for activation or cancellation."
@@ -195,8 +195,8 @@ fi
 
 if [[ -e $UPDATE_IN_PROGRESS_FILE && $UPGRADE_FLOW -eq 0 && $ACTIVATE_FLOW -eq 1 ]]; then
 	# Check for a timeout
-	timestamp=$(awk '{print $1}' $UPDATE_IN_PROGRESS_FILE)
-	now=$(awk '{print $1}' /proc/uptime)
+	timestamp=$(awk '{print int($1)}' $UPDATE_IN_PROGRESS_FILE)
+	now=$(awk '{print int($1)}' /proc/uptime)
 	elapsed=$((now - timestamp))
 	if [[ $elapsed -lt $PRE_ACTIVATION_TIMEOUT || $PRE_ACTIVATION_TIMEOUT -eq 0 ]]; then
 		ilog "Continuing with activation."
