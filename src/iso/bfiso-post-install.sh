@@ -975,6 +975,7 @@ wait_for_bmc_ip()
                 rlog "ERR Failed to access BMC"
                 ilog "- ERROR: Failed to access $BMC_IP after $SECONDS sec."
                 RC=$((RC+1))
+                return 1
             fi
         fi
     done
