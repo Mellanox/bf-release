@@ -64,6 +64,16 @@ log()
     rlog "$*"
 }
 
+is_bf4()
+{
+        # Check if the device is a BF4
+        if [ "$(lspci -nD 2> /dev/null | grep -w "15b3:a2df" | awk '{print $1}' | head -1)" != "" ]; then
+                return 0
+        fi
+
+        return 1
+}
+
 if [ ! -e /etc/udev/rules.d/92-oob_net.rules ]; then
 	cat > /etc/udev/rules.d/92-oob_net.rules << 'EOF'
 SUBSYSTEM=="net", ACTION=="add", DEVPATH=="/devices/platform/MLNXBF17:00/net/e*", NAME="oob_net0", RUN+="/sbin/sysctl -w net.ipv4.conf.oob_net0.arp_notify=1"
@@ -72,20 +82,22 @@ SUBSYSTEM=="net", ACTION=="add", DRIVERS=="lan743x", NAME="oob_net0", RUN+="/sbi
 EOF
 fi
 
-modprobe nls_iso8859-1
-modprobe sdhci-of-dwcmshc
-modprobe dw_mmc-bluefield
-modprobe mlxbf_tmfifo
-modprobe gpio_mlxbf3
-modprobe mlxbf_gige
-modprobe -a ipmi_msghandler ipmi_devintf i2c-mlxbf
-modprobe ipmb_host slave_add=0x10
-echo ipmb-host 0x1011 > /sys/bus/i2c/devices/i2c-1/new_device
-modprobe -a mlx5_ib mlxfw ib_umad
-modprobe nvme
-modprobe mlxbf_bootctl
-modprobe sbsa_gwdt
-sleep 5
+if ! is_bf4; then
+	modprobe nls_iso8859-1
+	modprobe sdhci-of-dwcmshc
+	modprobe dw_mmc-bluefield
+	modprobe mlxbf_tmfifo
+	modprobe gpio_mlxbf3
+	modprobe mlxbf_gige
+	modprobe -a ipmi_msghandler ipmi_devintf i2c-mlxbf
+	modprobe ipmb_host slave_add=0x10
+	echo ipmb-host 0x1011 > /sys/bus/i2c/devices/i2c-1/new_device
+	modprobe -a mlx5_ib mlxfw ib_umad
+	modprobe nvme
+	modprobe mlxbf_bootctl
+	modprobe sbsa_gwdt
+	sleep 5
+fi
 
 ilog "Starting mst:"
 ilog "$(mst start)"
