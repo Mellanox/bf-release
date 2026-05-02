@@ -34,6 +34,7 @@ NIC_FW_FOUND=0
 FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
 FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
 PROVIDED_NIC_FW_VERSION=""
+SET_EXT4_JOURNAL_DATA=${SET_EXT4_JOURNAL_DATA:-"yes"}
 
 distro="Ubuntu"
 
@@ -122,7 +123,9 @@ LOG=/root/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")
 
-ROOTFS=${ROOTFS:-"ext4"}
+# Root is mounted; infer filesystem type unless bf.cfg (or env) set ROOTFS.
+ROOTFS=${ROOTFS:-$(findmnt -n -o FSTYPE / 2>/dev/null)}
+ROOTFS=${ROOTFS:-ext4}
 
 export cx_pcidev=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}' | head -1)
 export flint_dev=$cx_pcidev
@@ -555,6 +558,20 @@ configure_grub()
 	ilog "$(/usr/sbin/grub-install ${device})"
 	ilog "$(/usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg)"
 	ilog "$(/usr/sbin/grub-set-default 0)"
+}
+
+configure_rootfs()
+{
+	if [[ "X$ROOTFS" == "Xext4" && "X$SET_EXT4_JOURNAL_DATA" == "Xyes" ]]; then
+		log "INFO: Setting EXT4 root filesystem journal data mode on ${ROOT_PARTITION}"
+		output=$(tune2fs -o journal_data "${ROOT_PARTITION}" 2>&1)
+		rc=$?
+		ilog "$output"
+		if [ $rc -ne 0 ]; then
+			ilog "ERROR: Failed to set EXT4 root filesystem journal data mode on ${ROOT_PARTITION}"
+			RC=$((RC+rc))
+		fi
+	fi
 }
 
 set_root_password()
@@ -1731,6 +1748,7 @@ global_installation_flow()
 	configure_ovs
 	configure_services
 	set_root_password
+	configure_rootfs
 	# create_initramfs
 
 	configure_grub
