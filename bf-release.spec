@@ -27,6 +27,9 @@ BlueField release files and post-installation configuration
 
 %define __python %{__python3}
 
+# Auto-detect RHEL build host. Guards below are skipped on non-RHEL hosts.
+%global rhel_host %(. /etc/os-release 2>/dev/null; [ "${ID}" = "rhel" ] && echo 1 || echo 0)
+
 %prep
 %setup -q
 
@@ -69,7 +72,7 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 install -d %{buildroot}/etc/sysconfig/network-scripts
 %endif
 %if ! 0%{?oraclelinux}
@@ -79,7 +82,7 @@ install -d %{buildroot}/etc/systemd/system/ovsdb-server.service.d
 %endif
 
 # Network configuration
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -138,7 +141,7 @@ EOF
 chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
@@ -178,7 +181,7 @@ install -m 0755	src/bfb_tool.py      %{buildroot}/opt/mellanox/mlnx_snap/exec_fi
 # K8s
 install -d %{buildroot}/var/lib/kubelet
 install -d %{buildroot}/etc/kubelet.d/
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
 install -d %{buildroot}/usr/lib/systemd/system/containerd.service.d
 install -d %{buildroot}/etc/cni/net.d
@@ -343,7 +346,7 @@ fi
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 /etc/sysconfig/network-scripts/*
 %endif
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
@@ -353,7 +356,7 @@ fi
 /etc/systemd/system/openvswitch.service.d/override.conf
 /etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 /etc/NetworkManager/conf.d/*
 %endif
 %if 0%{?oraclelinux}
@@ -369,7 +372,7 @@ fi
 %dir /var/lib/kubelet
 %dir /etc/kubelet.d
 
-%if !0%{?rhcos}
+%if !0%{?rhel_host}
 /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
 
