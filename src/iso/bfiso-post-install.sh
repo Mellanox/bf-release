@@ -33,6 +33,8 @@ FW_UPDATER=/opt/mellanox/mlnx-fw-updater/mlnx_fw_updater.pl
 FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
 
 distro="Ubuntu"
+logfile=${distro}.installation.log
+LOG=/root/$logfile
 
 rshimlog=$(which bfrshlog 2> /dev/null)
 RC=0
@@ -100,9 +102,6 @@ if [ -e /etc/bf.cfg ]; then
         log "INFO: Invalid bf.cfg"
     fi
 fi
-
-logfile=${distro}.installation.log
-LOG=/root/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")
 
