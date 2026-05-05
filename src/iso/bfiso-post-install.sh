@@ -37,6 +37,8 @@ PROVIDED_NIC_FW_VERSION=""
 SET_EXT4_JOURNAL_DATA=${SET_EXT4_JOURNAL_DATA:-"yes"}
 
 distro="Ubuntu"
+logfile=${distro}.installation.log
+LOG=/root/$logfile
 
 rshimlog=$(which bfrshlog 2> /dev/null)
 RC=0
@@ -117,9 +119,6 @@ if [ -e /etc/bf.cfg ]; then
         log "INFO: Invalid bf.cfg"
     fi
 fi
-
-logfile=${distro}.installation.log
-LOG=/root/$logfile
 
 fspath=$(readlink -f "$(dirname $0)")
 
