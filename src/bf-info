@@ -288,7 +288,8 @@ json_add_array() {
 }
 
 # Collect all version information
-DPDK_VERSION=$(/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3)
+# Use --no-huge so testpmd does not take hugepages just to print RTE Version (see Redmine #5009444).
+DPDK_VERSION=$(/opt/mellanox/dpdk/bin/dpdk-testpmd -v --no-huge 2>&1 | grep "RTE Version:" | cut -d ':' -f 3)
 KERNEL_VERSION=$(uname -r)
 MFT_VERSION=$(get_version_and_release mft)
 MSTFLINT_VERSION=$(get_version_and_release mstflint)
