@@ -288,9 +288,17 @@ json_add_array() {
 }
 
 # Collect all version information
+DPDK_VERSION=$(/opt/mellanox/dpdk/bin/dpdk-testpmd -v 2>&1 | grep "RTE Version:" | cut -d ':' -f 3)
 KERNEL_VERSION=$(uname -r)
 MFT_VERSION=$(get_version_and_release mft)
 MSTFLINT_VERSION=$(get_version_and_release mstflint)
+
+# Determine DPDK label based on version type (upstream vs Mellanox fork)
+if [[ "$DPDK_VERSION" == *"MLNX_DPDK"* ]]; then
+	DPDK_LABEL="mlnx-dpdk"
+else
+	DPDK_LABEL="dpdk"
+fi
 
 # Collect storage packages
 if [ "$DEV_TYPE" != "BlueField2" ]; then
@@ -384,6 +392,7 @@ if [ "$OUTPUT_FORMAT" = "json" ]; then
 	json_add_item "CEC_Firmware" "$(format_with_pending "$CEC_FW" "$CEC_FW_PENDING")" "true"
 	echo "  },"
 	echo "  \"drivers\": {"
+	json_add_item "$DPDK_LABEL" "$DPDK_VERSION" "false"
 	json_add_item "Kernel" "$KERNEL_VERSION" "true"
 	echo "  },"
 	echo "  \"tools\": {"
@@ -418,6 +427,7 @@ else
 	echo ""
 	cat << EOF
 Drivers:
+- $DPDK_LABEL:$DPDK_VERSION
 - Kernel: $KERNEL_VERSION
 
 Tools:
