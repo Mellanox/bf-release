@@ -27,9 +27,6 @@ BlueField release files and post-installation configuration
 
 %define __python %{__python3}
 
-# Auto-detect RHEL build host. Guards below are skipped on non-RHEL hosts.
-%global rhel_host %(. /etc/os-release 2>/dev/null; [ "${ID}" = "rhel" ] && echo 1 || echo 0)
-
 %prep
 %setup -q
 
@@ -72,9 +69,7 @@ install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
 install -d %{buildroot}/etc/systemd/system/network.service.d
-%if !0%{?rhel_host}
 install -d %{buildroot}/etc/sysconfig/network-scripts
-%endif
 %if ! 0%{?oraclelinux}
 install -d %{buildroot}/etc/systemd/system/openibd.service.d
 install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
@@ -82,7 +77,6 @@ install -d %{buildroot}/etc/systemd/system/ovsdb-server.service.d
 %endif
 
 # Network configuration
-%if !0%{?rhel_host}
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -105,7 +99,6 @@ ONBOOT="yes"
 BOOTPROTO="dhcp"
 TYPE=Ethernet
 EOF
-%endif
 
 cat > %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d/override.conf << EOF
 [Service]
@@ -141,11 +134,9 @@ EOF
 chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 
-%if !0%{?rhel_host}
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
-%endif
 
 %if 0%{?oraclelinux}
 install -d %{buildroot}/etc/dracut.conf.d
@@ -181,7 +172,6 @@ install -m 0755	src/bfb_tool.py      %{buildroot}/opt/mellanox/mlnx_snap/exec_fi
 # K8s
 install -d %{buildroot}/var/lib/kubelet
 install -d %{buildroot}/etc/kubelet.d/
-%if !0%{?rhel_host}
 install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
 install -d %{buildroot}/usr/lib/systemd/system/containerd.service.d
 install -d %{buildroot}/etc/cni/net.d
@@ -193,7 +183,6 @@ install -m 0644	src/90-kubelet-bluefield.conf %{buildroot}/usr/lib/systemd/syste
 install -m 0644	src/99-loopback.conf %{buildroot}/etc/cni/net.d/99-loopback.conf
 install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
-%endif
 install -d %{buildroot}/usr/bin
 install -d %{buildroot}/%{_datadir}/%{name}
 
@@ -201,6 +190,24 @@ install -d %{buildroot}/%{_datadir}/%{name}
 install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
 
 %post
+# RHEL 9.4 ships with Ignition / MachineConfigOperator owning these paths;
+# remove them on every install/upgrade so we don't conflict.
+if [ -e /etc/os-release ]; then
+    . /etc/os-release
+    if [ "${ID}" = "rhel" ] && [ "${VERSION_ID}" = "9.4" ]; then
+        rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 \
+              /etc/sysconfig/network-scripts/ifcfg-oob_net0 \
+              /etc/NetworkManager/conf.d/40-mlnx.conf \
+              /etc/NetworkManager/conf.d/45-mlnx-dns.conf \
+              /etc/containerd/config-mlnx.toml \
+              /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf \
+              /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf \
+              /etc/cni/net.d/99-loopback.conf \
+              /etc/crictl.yaml \
+              /var/lib/kubelet/config.yaml
+    fi
+fi
+
 if [ $1 -eq 1 ]; then
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
@@ -346,9 +353,7 @@ fi
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
-%if !0%{?rhel_host}
 /etc/sysconfig/network-scripts/*
-%endif
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
 %if ! 0%{?oraclelinux}
@@ -356,9 +361,7 @@ fi
 /etc/systemd/system/openvswitch.service.d/override.conf
 /etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
-%if !0%{?rhel_host}
 /etc/NetworkManager/conf.d/*
-%endif
 %if 0%{?oraclelinux}
 /etc/dracut.conf.d/mlnx.conf
 %endif
@@ -372,7 +375,6 @@ fi
 %dir /var/lib/kubelet
 %dir /etc/kubelet.d
 
-%if !0%{?rhel_host}
 /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf
 /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf
 
@@ -385,7 +387,6 @@ fi
 /etc/containerd/config-mlnx.toml
 
 /var/lib/kubelet/config.yaml
-%endif
 
 /usr/bin/bf-info
 
