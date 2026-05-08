@@ -1023,7 +1023,7 @@ update_bmc_fw()
 			# BlueField-2
 			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 ExtendedVersion | cut -d '-' -f 2,3)"
 		else
-			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | cut -d '-' -f 2- | sed -e 's/ //g')"
+			BMC_IMAGE_VERSION="$(strings -a -t d $image | grep -m 1 BF- | grep -oE '[0-9]+\.[0-9]+-[0-9]+')"
 		fi
 	fi
 	if [ -z "$BMC_IMAGE_VERSION" ]; then
