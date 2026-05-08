@@ -378,6 +378,18 @@ wait_bmc_task_complete()
 	/bin/rm -f $output
 }
 
+wait_bmc_task_complete_check_rc()
+{
+	local tid=$1
+	local rc_before=$RC
+
+	wait_bmc_task_complete "$tid"
+	if [ "$RC" -ne "$rc_before" ]; then
+		return 1
+	fi
+	return 0
+}
+
 wait_no_bmc_tasks()
 {
 	bmc_get_task_id
@@ -530,7 +542,11 @@ update_bmc_fw()
 	tid=$(echo $output | jq -r '."@odata.id"')
 	ilog "BMC Firmware update task id: $tid"
 
-	wait_bmc_task_complete $tid
+	if ! wait_bmc_task_complete_check_rc $tid; then
+		log "ERR Failed to update BMC firmware"
+		return 1
+	fi
+
 	if [ "$BMC_FIRMWARE_UPDATED" == "yes" ]; then
 		post_bmc_install_message="INFO: BMC firmware was updated to: ${BMC_IMAGE_VERSION}"
 		if [ "$BMC_REBOOT" != "yes" ]; then
@@ -623,7 +639,11 @@ update_cec_fw()
 	tid=$(echo $output | jq -r '."@odata.id"')
 	ilog "CEC Firmware update task id: $tid"
 
-	wait_bmc_task_complete $tid
+	if ! wait_bmc_task_complete_check_rc $tid; then
+		log "ERR Failed to update CEC firmware"
+		return 1
+	fi
+
 	if [ "$CEC_REBOOT" == "yes" ]; then
 		if [[ $(echo -e "${CEC_MIN_RESET_VERSION}\n${CEC_INSTALLED_VERSION}" | sort -V | head -n1) == "${CEC_MIN_RESET_VERSION}" ]]; then
 			log "Rebooting CEC..."
@@ -730,7 +750,10 @@ update_dpu_golden_image()
 
 			tid=$(echo $output | jq -r '."@odata.id"')
 			ilog "DPU Golden Image update task id: $tid"
-			wait_bmc_task_complete $tid
+			if ! wait_bmc_task_complete_check_rc $tid; then
+				log "ERR Failed to update DPU Golden Image"
+				return 1
+			fi
 
 		else
 			ilog "DPU Golden Image update is not supported for BMC firmware version $BMC_INSTALLED_VERSION"
@@ -840,7 +863,10 @@ update_nic_firmware_golden_image()
 
 			tid=$(echo $output | jq -r '."@odata.id"')
 			ilog "NIC Firmware Golden Image update task id: $tid"
-			wait_bmc_task_complete $tid
+			if ! wait_bmc_task_complete_check_rc $tid; then
+				log "ERR Failed to update NIC firmware Golden Image"
+				return 1
+			fi
 
 		else
 			ilog "NIC Firmware Golden Image update is not supported for BMC firmware version $BMC_INSTALLED_VERSION"
