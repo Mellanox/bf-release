@@ -74,17 +74,17 @@ mlx_mkcap="/usr/lib/firmware/mellanox/boot/capsule/scripts/mlx-mkcap"
 reset_bmc_rshim_log()
 {
 	ilog "Resetting BMC Rshim log"
-	is_bmc_rshim=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'test -e /dev/rshim0/misc && echo "yes" || echo "no"')
+	is_bmc_rshim=$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} 'test -e /dev/rshim0/misc && echo "yes" || echo "no"')
 	if [ "$is_bmc_rshim" == "no" ]; then
 		ilog "BMC Rshim is not found. Skipping BMC Rshim log reset..."
 		return
 	fi
-	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 1" > /dev/rshim0/misc')"
+	ilog "$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 1" > /dev/rshim0/misc')"
 	log "BMC Rshim log reset started"
 	# Wait for the misc to flush
 	sleep 10
-	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'cat /dev/rshim0/misc')"
-	ilog "$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 0" > /dev/rshim0/misc')"
+	ilog "$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} 'cat /dev/rshim0/misc')"
+	ilog "$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} 'echo "CLEAR_ON_READ 0" > /dev/rshim0/misc')"
 	log "BMC Rshim log reset completed"
 }
 
@@ -303,7 +303,7 @@ wait_bmc_task_complete()
 {
 	local tid=$1
 
-	copy_status=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Chassis/Bluefield_ERoT | jq -r ' .Oem.Nvidia.BackgroundCopyStatus')
+	copy_status=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -X GET https://${BMC_IP}/redfish/v1/Chassis/Bluefield_ERoT | jq -r ' .Oem.Nvidia.BackgroundCopyStatus')
 	if [ "X$copy_status" != "Xnull" ]; then
 		if [ "$copy_status" != "Completed" ]; then
 			ilog "BMC background copy is: $copy_status"
@@ -318,7 +318,7 @@ wait_bmc_task_complete()
 				break
 			fi
 			sleep 10
-			copy_status=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -X GET https://${BMC_IP}/redfish/v1/Chassis/Bluefield_ERoT | jq -r ' .Oem.Nvidia.BackgroundCopyStatus')
+			copy_status=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -X GET https://${BMC_IP}/redfish/v1/Chassis/Bluefield_ERoT | jq -r ' .Oem.Nvidia.BackgroundCopyStatus')
 		done
 	fi
 
@@ -514,20 +514,20 @@ update_bmc_fw()
 		if [[ $ACTIVATE_FLOW -eq 1 || $COMPATIBILITY_FLOW -eq 1 ]]; then
 			ilog "Proceeding with the BMC firmware update using update-multipart."
 			ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"ForceUpdate\":true};type=application/octet-stream' -F UpdateFile=@${image}"
-			output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+			output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
 			ilog "BMC Firmware update: $output"
 			BMC_FIRMWARE_UPDATED="yes"
 		elif [ $UPGRADE_FLOW -eq 1 ]; then
 			ilog "Proceeding with the BMC firmware staging."
 			ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"Oem\":{\"Nvidia\":{\"UpdateOption\":\"StageOnly\"}}};type=application/octet-stream' -F UpdateFile=@${image}"
-			output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"Oem":{"Nvidia":{"UpdateOption":"StageOnly"}}};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+			output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"Oem":{"Nvidia":{"UpdateOption":"StageOnly"}}};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
 			ilog "BMC Firmware staging: $output"
 			BMC_FIRMWARE_STAGED="yes"
 		fi
 	else
 		ilog "Proceeding with the BMC firmware update."
 		ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService"
-		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
+		output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
 		ilog "BMC Firmware update: $output"
 		BMC_FIRMWARE_UPDATED="yes"
 	fi
@@ -623,10 +623,10 @@ update_cec_fw()
 
 	if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION}" ]]; then
 		ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={\"ForceUpdate\":true};type=application/octet-stream' -F UpdateFile=@${image}"
-		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
+		output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" https://${BMC_IP}/redfish/v1/UpdateService/update-multipart -F 'UpdateParameters={"ForceUpdate":true};type=application/octet-stream' -F UpdateFile=@${image} 2>&1)
 	else
 		ilog "curl -sSk -u <BMC_USER:BMC_PASSWORD> -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService"
-		output=$(curl -sSk -u $BMC_USER:$BMC_PASSWORD -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
+		output=$(curl -sSk -u $BMC_USER:"$BMC_PASSWORD" -H "Content-Type: application/octet-stream" -X POST -T ${image} https://${BMC_IP}/redfish/v1/UpdateService 2>&1)
 	fi
 	ilog "CEC Firmware update: $output"
 	if (echo $output | grep -q "internal service error"); then
@@ -714,17 +714,17 @@ update_dpu_golden_image()
 		DPU_GI_IMAGE_VERSION="$(sha256sum $image | awk '{print $1}')"
 		ilog "Provided DPU Golden Image version: $DPU_GI_IMAGE_VERSION"
 
-		DPU_GI_INSTALLED_VERSION="$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -V 2> /dev/null)"
+		DPU_GI_INSTALLED_VERSION="$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -V 2> /dev/null)"
 		ilog "Installed DPU Golden Image version: $DPU_GI_INSTALLED_VERSION"
 
 		if [ "$DPU_GI_IMAGE_VERSION" == "$DPU_GI_INSTALLED_VERSION" ]; then
 			ilog "Installed DPU Golden Image version is the same as provided. Skipping DPU Golden Image update."
 		else
-			sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-arm
+			sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-arm
 			ilog "Copying $image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-arm"
-			sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-arm
+			sshpass -p "$BMC_SSH_PASSWORD" $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-arm
 			ilog "Installing DPU Golden Image on the BMC by: dpu_golden_image golden_image_arm -w ${BMC_TMP_DIR}/golden-image-arm/$(basename $image)"
-			output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -w ${BMC_TMP_DIR}/golden-image-arm/$(basename $image) 2>&1)
+			output=$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_arm -w ${BMC_TMP_DIR}/golden-image-arm/$(basename $image) 2>&1)
 			if [ $? -eq 0 ]; then
 				log "DPU Golden Image installed successfully"
 			else
@@ -778,12 +778,12 @@ update_dpu_golden_image()
 				RC=$((RC+1))
 				return $RC
 			fi
-			sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-config
+			sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-config
 			ilog "Copying $config_image to ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config"
-			sshpass -p $BMC_SSH_PASSWORD $SCP $config_image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config
+			sshpass -p "$BMC_SSH_PASSWORD" $SCP $config_image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-config
 			if [ "X$BMC_INSTALL_CONFIG_IMAGE" == "Xyes" ]; then
 				ilog "Installing DPU Config Image on the BMC by: dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image)"
-				output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image) 2>&1)
+				output=$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_config -w ${BMC_TMP_DIR}/golden-image-config/$(basename $config_image) 2>&1)
 				if [ $? -eq 0 ]; then
 					log "Installed BMC config image"
 					BMC_CONFIG_UPDATED="yes"
@@ -828,7 +828,7 @@ update_nic_firmware_golden_image()
 		NIC_GI_IMAGE_VERSION="$(sha256sum $image | awk '{print $1}')"
 		ilog "Provided NIC firmware Golden Image version: $NIC_GI_IMAGE_VERSION"
 
-		NIC_GI_INSTALLED_VERSION="$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -V 2> /dev/null)"
+		NIC_GI_INSTALLED_VERSION="$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -V 2> /dev/null)"
 		ilog "Installed NIC firmware Golden Image version: $NIC_GI_INSTALLED_VERSION"
 
 		if [ "$NIC_GI_IMAGE_VERSION" == "$NIC_GI_INSTALLED_VERSION" ]; then
@@ -836,9 +836,9 @@ update_nic_firmware_golden_image()
 			return 0
 		fi
 
-		sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-nic
-		sshpass -p $BMC_SSH_PASSWORD $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-nic
-		output=$(sshpass -p $BMC_SSH_PASSWORD $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -w ${BMC_TMP_DIR}/golden-image-nic/$(basename $image) 2>&1)
+		sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} mkdir -p ${BMC_TMP_DIR}/golden-image-nic
+		sshpass -p "$BMC_SSH_PASSWORD" $SCP $image ${BMC_SSH_USER}@${BMC_IP}:${BMC_TMP_DIR}/golden-image-nic
+		output=$(sshpass -p "$BMC_SSH_PASSWORD" $SSH ${BMC_SSH_USER}@${BMC_IP} dpu_golden_image golden_image_nic -w ${BMC_TMP_DIR}/golden-image-nic/$(basename $image) 2>&1)
 		if [ $? -eq 0 ]; then
 			log "NIC firmware Golden Image installed successfully"
 		else
