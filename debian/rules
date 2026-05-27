@@ -151,6 +151,10 @@ endif
 	install -m 0755 src/iso/bfiso-post-install.sh debian/$(pname)/usr/sbin/bfiso-post-install.sh
 	install -m 0755 src/dpu-bmc-upgrade debian/$(pname)/usr/sbin/dpu-bmc-upgrade
 
+	# BTRFS deferred update / rollback
+	install -m0755 src/btrfs-deferred-update.sh debian/$(pname)/usr/sbin/btrfs-deferred-update.sh
+	install -m0755 src/btrfs-rollback.sh debian/$(pname)/usr/sbin/btrfs-rollback.sh
+
 	# BFB Info
 	install -m 0755	src/bf-info           debian/$(pname)/usr/bin/bf-info
 
