@@ -190,11 +190,12 @@ install -d %{buildroot}/%{_datadir}/%{name}
 install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
 
 %post
-# RHEL 9.4 ships with Ignition / MachineConfigOperator owning these paths;
+# RHCOS owns these paths via Ignition / MachineConfigOperator;
 # remove them on every install/upgrade so we don't conflict.
+# RHCOS reports ID=rhel, so VARIANT_ID is the real discriminator.
 if [ -e /etc/os-release ]; then
     . /etc/os-release
-    if [ "${ID}" = "rhel" ] && [ "${VERSION_ID}" = "9.4" ]; then
+    if [ "${VARIANT_ID}" = "coreos" ]; then
         rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 \
               /etc/sysconfig/network-scripts/ifcfg-oob_net0 \
               /etc/NetworkManager/conf.d/40-mlnx.conf \
