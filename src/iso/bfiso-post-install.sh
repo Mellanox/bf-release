@@ -783,12 +783,53 @@ configure_sfs()
 {
 	: > /etc/mellanox/mlnx-sf.conf
 
-	for pciid in $(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
-	do
-		cat >> /etc/mellanox/mlnx-sf.conf << EOF
+	# Get all PCI IDs for BlueField devices
+	all_pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
+
+	if [ -z "$all_pciids" ]; then
+		return
+	fi
+
+	# Check if Socket Direct mode is active (PF_SD_GROUP=1 in mlxconfig)
+	sd_mode=0
+	local mftcfg=mstconfig
+	if [ -x /usr/bin/mlxconfig ]; then
+		mftcfg=mlxconfig
+	fi
+	for pciid in $all_pciids; do
+		if ($mftcfg -d ${pciid} -e q PF_SD_GROUP 2>/dev/null | grep -o 'PF_SD_GROUP.*' | awk '{print $3}' | grep -q "^1$"); then
+			sd_mode=1
+			break
+		fi
+	done
+
+	if [ $sd_mode -eq 1 ]; then
+		# Socket Direct: create one SF per PCI domain on function 0.
+		# Result: one SF on 0002:01:00.0 and one on 0006:01:00.0
+		declare -A sd_domains
+		for pciid in $all_pciids; do
+			domain="${pciid%%:*}"
+			sd_domains[$domain]=1
+		done
+		sorted_domains=($(echo "${!sd_domains[@]}" | tr ' ' '\n' | sort))
+		for domain in "${sorted_domains[@]}"; do
+			pciid="${domain}:01:00.0"
+			# Verify this PCI ID actually exists
+			if echo "$all_pciids" | grep -q "^${pciid}$"; then
+				cat >> /etc/mellanox/mlnx-sf.conf << EOF
 /sbin/mlnx-sf --action create --device $pciid --sfnum 0 --hwaddr $(uuidgen | sed -e 's/-//;s/^\(..\)\(..\)\(..\)\(..\)\(..\).*$/02:\1:\2:\3:\4:\5/')
 EOF
-	done
+			fi
+		done
+	else
+		# Non-SD: one SF per PCI device (original behavior)
+		for pciid in $all_pciids
+		do
+			cat >> /etc/mellanox/mlnx-sf.conf << EOF
+/sbin/mlnx-sf --action create --device $pciid --sfnum 0 --hwaddr $(uuidgen | sed -e 's/-//;s/^\(..\)\(..\)\(..\)\(..\)\(..\).*$/02:\1:\2:\3:\4:\5/')
+EOF
+		done
+	fi
 }
 
 configure_ovs()
