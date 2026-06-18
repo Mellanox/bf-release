@@ -145,6 +145,11 @@ get_cec_fw()
 	fi
 }
 
+get_grace_fw()
+{
+	dmidecode -s bios-version
+}
+
 if [ -e "$BOOTIMG_LOCATION" ]; then
 	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
 	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
@@ -174,6 +179,7 @@ case "$MST_DEVICE" in
 	*mt41682*) DEVICE_GEN="bf1"; DEV_TYPE="BlueField" ;;
 	*mt41686*) DEVICE_GEN="bf2"; DEV_TYPE="BlueField2" ;;
 	*mt41692*) DEVICE_GEN="bf3"; DEV_TYPE="BlueField3" ;;
+	*mt41695*) DEVICE_GEN="bf4"; DEV_TYPE="BlueField4" ;;
 	*)	     DEVICE_GEN="unknown"; DEV_TYPE="" ;;
 esac
 
@@ -190,6 +196,7 @@ BMC_FW=""
 BMC_FW_PENDING=""
 CEC_FW=""
 CEC_FW_PENDING=""
+GRACE_FW=""
 
 if [ -n "$MST_DEVICE" ]; then
 	NIC_FW=$(get_mcqi_version 0 "$MST_DEVICE")
@@ -204,15 +211,19 @@ if [ -n "$MST_DEVICE" ]; then
 		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$MST_DEVICE")
 		CEC_FW=$(get_misoc_version "CEC" 0 "$MST_DEVICE")
 		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$MST_DEVICE")
+	elif [ "$DEVICE_GEN" = "bf4" ]; then
+		GRACE_FW=$(get_grace_fw)
 	fi
 fi
 
 # Fallbacks if register queries failed
-[ -z "$ATF_FW" ] && ATF_FW="$BUILD_ATF"
-[ -z "$UEFI_FW" ] && UEFI_FW="$BUILD_UEFI"
 [ -z "$NIC_FW" ] && NIC_FW=$(get_packaged_nic_fw)
-[ -z "$BMC_FW" ] && BMC_FW=$(get_bmc_fw)
-[ -z "$CEC_FW" ] && CEC_FW=$(get_cec_fw)
+if [ "$DEVICE_GEN" != "bf4" ]; then
+	[ -z "$ATF_FW" ] && ATF_FW="$BUILD_ATF"
+	[ -z "$UEFI_FW" ] && UEFI_FW="$BUILD_UEFI"
+	[ -z "$BMC_FW" ] && BMC_FW=$(get_bmc_fw)
+	[ -z "$CEC_FW" ] && CEC_FW=$(get_cec_fw)
+fi
 
 MLX_REGEX=$(get_version mlx-regex 2> /dev/null)
 
@@ -385,12 +396,16 @@ fi
 if [ "$OUTPUT_FORMAT" = "json" ]; then
 	echo "{"
 	echo "  \"firmware\": {"
-	json_add_item "ATF" "$(format_with_pending "$ATF_FW" "$ATF_PENDING")" "false"
-	json_add_item "UEFI" "$(format_with_pending "$UEFI_FW" "$UEFI_PENDING")" "false"
-	json_add_item "BSP" "$BUILD_BSP" "false"
 	json_add_item "NIC_Firmware" "$(format_with_pending "$NIC_FW" "$NIC_FW_PENDING")" "false"
-	json_add_item "BMC_Firmware" "$(format_with_pending "$BMC_FW" "$BMC_FW_PENDING")" "false"
-	json_add_item "CEC_Firmware" "$(format_with_pending "$CEC_FW" "$CEC_FW_PENDING")" "true"
+	if [ "$DEVICE_GEN" = "bf4" ]; then
+		json_add_item "Grace_Firmware" "$(format_with_pending "$GRACE_FW" "$GRACE_FW")" "true"
+	else
+		json_add_item "ATF" "$(format_with_pending "$ATF_FW" "$ATF_PENDING")" "false"
+		json_add_item "UEFI" "$(format_with_pending "$UEFI_FW" "$UEFI_PENDING")" "false"
+		json_add_item "BSP" "$BUILD_BSP" "false"
+		json_add_item "BMC_Firmware" "$(format_with_pending "$BMC_FW" "$BMC_FW_PENDING")" "false"
+		json_add_item "CEC_Firmware" "$(format_with_pending "$CEC_FW" "$CEC_FW_PENDING")" "true"
+	fi
 	echo "  },"
 	echo "  \"drivers\": {"
 	json_add_item "$DPDK_LABEL" "$DPDK_VERSION" "false"
@@ -419,12 +434,16 @@ else
 	# Original YAML-like format
 	echo ""
 	echo "Firmware:"
-	print_fw_line "ATF" "$ATF_FW" "$ATF_PENDING"
-	print_fw_line "UEFI" "$UEFI_FW" "$UEFI_PENDING"
-	echo "- BSP: $BUILD_BSP"
 	print_fw_line "NIC Firmware" "$NIC_FW" "$NIC_FW_PENDING"
-	print_fw_line "BMC Firmware" "$BMC_FW" "$BMC_FW_PENDING"
-	print_fw_line "CEC Firmware" "$CEC_FW" "$CEC_FW_PENDING"
+	if [ "$DEVICE_GEN" = "bf4" ]; then
+		print_fw_line "Grace Firmware" "$GRACE_FW" "$GRACE_FW"
+	else
+		print_fw_line "ATF" "$ATF_FW" "$ATF_PENDING"
+		print_fw_line "UEFI" "$UEFI_FW" "$UEFI_PENDING"
+		echo "- BSP: $BUILD_BSP"
+		print_fw_line "BMC Firmware" "$BMC_FW" "$BMC_FW_PENDING"
+		print_fw_line "CEC Firmware" "$CEC_FW" "$CEC_FW_PENDING"
+	fi
 	echo ""
 	cat << EOF
 Drivers:
