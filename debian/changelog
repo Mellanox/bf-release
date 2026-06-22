@@ -1,8 +1,10 @@
 bf-release (4.9.5) UNRELEASED; urgency=medium
 
   * 4.9.5 release
+  * Point DOCA repo to latest-2.9-LTS, update GPG key to
+    nvidia-doca-debian-gpg-public-key.asc, rename arch aarch64 -> arm64-dpu
 
- -- Vladimir Sokolovsky <vlad@nvidia.com>  Thu, 12 Feb 2026 15:56:23 +0000
+ -- Moshe Sheena <msheena@nvidia.com>  Mon, 22 Jun 2026 15:47:00 +0000
 
 bf-release (4.9.4) UNRELEASED; urgency=medium
 
