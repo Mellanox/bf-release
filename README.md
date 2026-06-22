@@ -45,6 +45,8 @@ src/45-mlnx-dns.conf
 # UDEV rules
 src/80-ifupdown.rules - override /usr/lib/udev/rules.d/80-ifupdown.rules
 
+src/93-nodnic.rules
+
 src/92-oob_net.rules
 
 src/91-tmfifo_net.rules

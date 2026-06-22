@@ -287,6 +287,9 @@ EOF
 	# openibd to support MLNX_OFED drivers coming with Canonical's deb
 	sed -i -e "s/FORCE_MODE=.*/FORCE_MODE=yes/" /etc/infiniband/openib.conf
 
+	if is_bf4; then
+		echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-h2g-routing.conf
+	fi
 	/bin/rm -f /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
 	/bin/rm -f /etc/default/grub.d/50-cloudimg-settings.cfg
 	/bin/rm -f /etc/hostname
@@ -363,6 +366,43 @@ EOF
 		ilog "Removed deprectated configuration file: /etc/netplan/60-mlnx.yaml"
 	fi
 
+	if is_bf4; then
+		cat > /etc/netplan/70-nodnic-h2g.yaml << 'EOF'
+network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    # NODNIC Host-to-Grace interface (CX9 PCIe network emulation)
+    # Interface name may vary — check with: ip link | grep nodnic
+    # or identify by driver: ethtool -i <iface> → driver: mlx5_core (NODNIC PF)
+    nodnic0:
+      addresses:
+        - "192.168.100.2/30"
+      nameservers:
+        addresses:
+        - "192.168.100.1"
+      dhcp4: false
+      routes:
+        - to: "192.168.240.0/29"
+          via: "192.168.100.1"
+          metric: 1025
+EOF
+		cat > /etc/netplan/71-vlan4040.yaml << 'EOF'
+network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    oob_net0:
+      dhcp4: true
+  vlans:
+    vlan4040:
+      id: 4040
+      link: oob_net0
+      addresses:
+        - "192.168.240.2/29"
+      dhcp4: false
+EOF
+	fi
 	return 0
 }
 

@@ -1,0 +1,3 @@
+# BF4 NODNIC Host-to-Grace persistent interface naming
+# Driver: mlx5_nodnic -> interface name: nodnic0
+SUBSYSTEM=="net", ACTION=="add", DRIVERS=="mlx5_nodnic", NAME="nodnic0"

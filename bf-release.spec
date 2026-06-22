@@ -65,6 +65,7 @@ install -m 0644	src/90-bluefield.conf	%{buildroot}/usr/lib/sysctl.d/
 install -d %{buildroot}/lib/udev/rules.d
 install -m 0644 src/91-tmfifo_net.rules		%{buildroot}/lib/udev/rules.d
 install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
+install -m 0644 src/93-nodnic.rules		%{buildroot}/lib/udev/rules.d
 
 # System services
 install -d %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d
