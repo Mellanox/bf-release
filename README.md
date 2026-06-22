@@ -55,7 +55,11 @@ src/mlnx-ovs.conf
 
 # DOCA APT repository
 
-src/doca.list
+src/doca.list - Static example of the DOCA APT repo configuration. The actual
+file installed on-device is generated dynamically by `debian/rules` using
+`lsb_release` to detect the OS and version at build time. Points to the
+`latest-2.9-LTS` repo path; uses `nvidia-doca-debian-gpg-public-key.asc`
+for key import.
 
 # Cloud-init conifugration files for Ubuntu
 
