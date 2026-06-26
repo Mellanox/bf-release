@@ -44,6 +44,7 @@ usage()
 	echo "Usage:"
 	echo "  $PROG pkg1.deb pkg2.deb ...     Install .deb files (dpkg -i)"
 	echo "  $PROG --apt pkg1 pkg2 ...       Install packages via apt-get"
+	echo "  $PROG --upgrade                 Upgrade all packages (apt-get upgrade)"
 	echo ""
 	echo "The update takes effect after reboot."
 	echo "Use btrfs-rollback.sh to revert before or after reboot."
@@ -118,7 +119,12 @@ mount --bind /dev "$WORKDIR/@_new/dev"
 mount --bind /dev/pts "$WORKDIR/@_new/dev/pts"
 
 # Install packages
-if [ "$1" == "--apt" ]; then
+if [ "$1" == "--upgrade" ]; then
+	echo "==> Running apt-get update in snapshot"
+	chroot "$WORKDIR/@_new" apt-get update
+	echo "==> Upgrading all packages in snapshot"
+	chroot "$WORKDIR/@_new" apt-get upgrade -y
+elif [ "$1" == "--apt" ]; then
 	shift
 	echo "==> Running apt-get update in snapshot"
 	chroot "$WORKDIR/@_new" apt-get update
