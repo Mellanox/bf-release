@@ -14,7 +14,7 @@ BF_KERNEL := $(shell dpkg -L mlnx-ofed-kernel-modules | grep -o [0-9].*bluefield
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
 
 BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
-ARCH := aarch64
+ARCH := arm64-dpu
 
 %:
 	dh $@
@@ -47,7 +47,7 @@ override_dh_auto_install:
 	echo "# For more information, refer to http://linux.mellanox.com" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "#" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "# To add public key:" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
-	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest-3.2-LTS/$(DIST_NAME_L)$(DIST_VERSION)/aarch64/GPG-KEY-Mellanox.pub | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
+	echo "# wget -qO - https://linux.mellanox.com/public/repo/doca/latest-3.2-LTS/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH)/nvidia-doca-debian-gpg-public-key.asc | sudo apt-key add -" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	echo "deb [trusted=yes] https://linux.mellanox.com/public/repo/doca/latest-3.2-LTS/$(DIST_NAME_L)$(DIST_VERSION)/$(ARCH) ./" >> debian/$(pname)/etc/apt/sources.list.d/doca.list
 	chmod 644 debian/$(pname)/etc/apt/sources.list.d/doca.list
 
