@@ -514,9 +514,9 @@ configure_services()
 	ilog "$(/bin/systemctl disable ModemManager.service > /dev/null 2>&1)"
 }
 
-enable_sfc_hbn()
+stage_sfc_hbn_install()
 {
-	ilog "Enable SFC HBN"
+	ilog "Stage deferred SFC-HBN install"
 	ARG_PORT0=""
 	ARG_PORT1=""
 	# initial sfc parameters
@@ -555,9 +555,51 @@ enable_sfc_hbn()
 	HBN_IFNAME_WAIT_INTERVAL=${HBN_IFNAME_WAIT_INTERVAL:-10}
 	BR_HBN_VF_GROUPS=${BR_HBN_VF_GROUPS:-"c1pf0:0-12;c1pf1:0-5"}
 	BR_SFC_VF_GROUPS=${BR_SFC_VF_GROUPS:-"pf0dpu1,pfdpu3"}
-	log "INFO: Installing SFC HBN environment"
-	ilog "$(BR_HBN_UPLINKS=${BR_HBN_UPLINKS} BR_HBN_REPS=${BR_HBN_REPS} BR_HBN_SFS=${BR_HBN_SFS} BR_SFC_UPLINKS=${BR_SFC_UPLINKS} BR_SFC_REPS=${BR_SFC_REPS} BR_SFC_SFS=${BR_SFC_SFS} BR_HBN_SFC_PATCH_PORTS=${BR_HBN_SFC_PATCH_PORTS} LINK_PROPAGATION=${LINK_PROPAGATION} ENABLE_BR_SFC=${ENABLE_BR_SFC} ENABLE_BR_SFC_DEFAULT_FLOWS=${ENABLE_BR_SFC_DEFAULT_FLOWS} HUGEPAGE_SIZE=${HUGEPAGE_SIZE} HUGEPAGE_COUNT=${HUGEPAGE_COUNT} CLOUD_OPTION=${CLOUD_OPTION} HBN_PROFILE=${HBN_PROFILE} HBN_IFNAME_WAIT_TIMEOUT=${HBN_IFNAME_WAIT_TIMEOUT} HBN_IFNAME_WAIT_INTERVAL=${HBN_IFNAME_WAIT_INTERVAL} BR_HBN_VF_GROUPS=${BR_HBN_VF_GROUPS} BR_SFC_VF_GROUPS=${BR_SFC_VF_GROUPS} /opt/mellanox/sfc-hbn/install.sh ${ARG_PORT0} ${ARG_PORT1} 2>&1)"
-	NIC_FW_RESET_REQUIRED=1
+
+	log "INFO: Staging deferred SFC-HBN install"
+	mkdir -p /var/lib/sfc-hbn
+	cat > /etc/mellanox/sfc-hbn-deferred-install.env <<EOF
+BR_HBN_UPLINKS="${BR_HBN_UPLINKS}"
+BR_HBN_REPS="${BR_HBN_REPS}"
+BR_HBN_SFS="${BR_HBN_SFS}"
+BR_SFC_UPLINKS="${BR_SFC_UPLINKS}"
+BR_SFC_REPS="${BR_SFC_REPS}"
+BR_SFC_SFS="${BR_SFC_SFS}"
+BR_HBN_SFC_PATCH_PORTS="${BR_HBN_SFC_PATCH_PORTS}"
+LINK_PROPAGATION="${LINK_PROPAGATION}"
+ENABLE_BR_SFC="${ENABLE_BR_SFC}"
+ENABLE_BR_SFC_DEFAULT_FLOWS="${ENABLE_BR_SFC_DEFAULT_FLOWS}"
+HUGEPAGE_SIZE="${HUGEPAGE_SIZE}"
+HUGEPAGE_COUNT="${HUGEPAGE_COUNT}"
+CLOUD_OPTION="${CLOUD_OPTION}"
+HBN_PROFILE="${HBN_PROFILE}"
+HBN_IFNAME_WAIT_TIMEOUT="${HBN_IFNAME_WAIT_TIMEOUT}"
+HBN_IFNAME_WAIT_INTERVAL="${HBN_IFNAME_WAIT_INTERVAL}"
+BR_HBN_VF_GROUPS="${BR_HBN_VF_GROUPS}"
+BR_SFC_VF_GROUPS="${BR_SFC_VF_GROUPS}"
+HBN_UPLINKS="${HBN_UPLINKS}"
+HBN_REPS="${HBN_REPS}"
+HBN_DPU_SFS="${HBN_DPU_SFS}"
+ARG_PORT0="${ARG_PORT0}"
+ARG_PORT1="${ARG_PORT1}"
+EOF
+
+	log "INFO: Staged SFC HBN environment for deferred install"
+	ilog "BR_HBN_UPLINKS=${BR_HBN_UPLINKS} BR_HBN_REPS=${BR_HBN_REPS} BR_HBN_SFS=${BR_HBN_SFS} BR_SFC_UPLINKS=${BR_SFC_UPLINKS} BR_SFC_REPS=${BR_SFC_REPS} BR_SFC_SFS=${BR_SFC_SFS} BR_HBN_SFC_PATCH_PORTS=${BR_HBN_SFC_PATCH_PORTS} LINK_PROPAGATION=${LINK_PROPAGATION} ENABLE_BR_SFC=${ENABLE_BR_SFC} ENABLE_BR_SFC_DEFAULT_FLOWS=${ENABLE_BR_SFC_DEFAULT_FLOWS} HUGEPAGE_SIZE=${HUGEPAGE_SIZE} HUGEPAGE_COUNT=${HUGEPAGE_COUNT} CLOUD_OPTION=${CLOUD_OPTION} HBN_PROFILE=${HBN_PROFILE} HBN_IFNAME_WAIT_TIMEOUT=${HBN_IFNAME_WAIT_TIMEOUT} HBN_IFNAME_WAIT_INTERVAL=${HBN_IFNAME_WAIT_INTERVAL} BR_HBN_VF_GROUPS=${BR_HBN_VF_GROUPS} BR_SFC_VF_GROUPS=${BR_SFC_VF_GROUPS} ARG_PORT0=${ARG_PORT0} ARG_PORT1=${ARG_PORT1}"
+
+	mkdir -p /var/lib/sfc-hbn
+	touch /var/lib/sfc-hbn/install-pending
+
+	# Block SSH until the deferred install completes on first boot, so users
+	# cannot log in to a half-configured system. first_boot_install.sh unmasks
+	# and starts it again at the very end. Console/rshim access stays available
+	# for debugging if the deferred install fails.
+	systemctl stop ssh.socket ssh.service >/dev/null 2>&1 || true
+	systemctl disable ssh.socket ssh.service >/dev/null 2>&1 || true
+
+	# Arm the deferred one-shot. The unit is already installed at
+	# /etc/systemd/system/sfc-hbn-deferred-install.service by the sfc-hbn package.
+	systemctl enable sfc-hbn-deferred-install.service
 }
 
 create_initramfs()
@@ -1840,11 +1882,11 @@ global_installation_flow()
 	update_uefi_boot_entries
 
 	if [ "X$ENABLE_SFC_HBN" == "Xyes" ]; then
-		enable_sfc_hbn
+		stage_sfc_hbn_install
 	fi
 
 	if [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
-		enable_sfc_hbn
+		stage_sfc_hbn_install
 	fi
 
 	update_efi_bootmgr
