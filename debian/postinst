@@ -22,6 +22,22 @@ disable_service()
 }
 
 if [ "$1" = "configure" ]; then
+	if [ -n "$2" ]; then
+		# Upgrade only
+
+		# Omit iscsi from dracut modules to remove unrelevant error during upgrade
+		# Note: Leading and trailing spaces inside the quotes — dracut requires them for += list options.
+		echo 'omit_dracutmodules+=" iscsi "' | sudo tee /etc/dracut.conf.d/01-bf-omit-iscsi.conf
+
+		# Refresh module deps for every installed kernel so a
+		# stale modules.dep on the outgoing kernel (e.g. OFED RDMA modules
+		# replaced for a new kver) doesn't break the dracut trigger.
+		for kdir in /lib/modules/*/; do
+			kver=$(basename "$kdir")
+			[ -e "$kdir/modules.dep" ] || continue
+			depmod -a "$kver" || true
+		done
+	fi
 	if [ -z "$2" ]; then
 		# Fresh install, not an upgrade
 		if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
