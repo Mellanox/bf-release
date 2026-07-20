@@ -27,6 +27,7 @@ UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
 BMC_INSTALLED_VERSION=""
 BMC_MIN_MULTIPART_VERSION="24.04"
 BMC_MIN_MULTIPART_VERSION_PLDM="25.10"
+GI_INVENTORY_TIMEOUT=${GI_INVENTORY_TIMEOUT:-300}
 CEC_MIN_RESET_VERSION="00.02.0180.0000"
 UPDATE_DPU_GOLDEN_IMAGE=${UPDATE_DPU_GOLDEN_IMAGE:-"yes"}
 UPDATE_NIC_FW_GOLDEN_IMAGE=${UPDATE_NIC_FW_GOLDEN_IMAGE:-"yes"}
@@ -453,6 +454,29 @@ get_bmc_firmware_version()
 	ilog "Running BMC firmware version: $BMC_INSTALLED_VERSION"
 }
 
+# Wait for a golden-image device in FirmwareInventory before update-multipart (Redmine #5149533)
+wait_for_fw_inventory_device()
+{
+	local device="$1"
+	local timeout="${2:-$GI_INVENTORY_TIMEOUT}"
+	ilog "Waiting for FW inventory device '$device' (timeout ${timeout}s)"
+	SECONDS=0
+	while true; do
+		get_bmc_token
+		if curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X GET \
+			https://${BMC_IP}/redfish/v1/UpdateService/FirmwareInventory 2>/dev/null \
+			| jq -r '.Members[]."@odata.id"' | grep -q "/${device}$"; then
+			ilog "FW inventory device '$device' present after ${SECONDS}s"
+			return 0
+		fi
+		if [ $SECONDS -gt $timeout ]; then
+			log "ERR Timeout waiting for FW inventory device '$device' after ${SECONDS}s"
+			return 1
+		fi
+		sleep 10
+	done
+}
+
 is_pldm_file()
 {
 	# Read the first 16 bytes and print as hex
@@ -739,6 +763,7 @@ update_dpu_golden_image()
 
 		if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION_PLDM}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION_PLDM}" ]]; then
 			ilog "curl -k -H \"X-Auth-Token: <BMC_TOKEN>\" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F \"UpdateFile=@${image};type=application/octet-stream\""
+			wait_for_fw_inventory_device golden_image_arm
 			output=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F "UpdateFile=@${image};type=application/octet-stream" 2>&1)
 			ilog "DPU Golden Image update: $output"
 			if (echo $output | grep -q "internal service error"); then
@@ -852,6 +877,7 @@ update_nic_firmware_golden_image()
 
 		if [[ $(echo -e "${BMC_MIN_MULTIPART_VERSION_PLDM}\n${BMC_INSTALLED_VERSION}" | sort -V | head -n1) == "${BMC_MIN_MULTIPART_VERSION_PLDM}" ]]; then
 			ilog "curl -k -H \"X-Auth-Token: <BMC_TOKEN>\" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F \"UpdateFile=@${image};type=application/octet-stream\""
+			wait_for_fw_inventory_device golden_image_nic
 			output=$(curl -sSk -H "X-Auth-Token: $BMC_TOKEN" -X POST https://${BMC_IP}/redfish/v1/UpdateService/update-multipart  -F 'UpdateParameters={};type=application/json'  -F "UpdateFile=@${image};type=application/octet-stream" 2>&1)
 			ilog "NIC firmware Golden Image update: $output"
 			if (echo $output | grep -q "internal service error"); then
