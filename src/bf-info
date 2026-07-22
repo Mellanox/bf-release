@@ -150,6 +150,23 @@ get_grace_fw()
 	dmidecode -s bios-version
 }
 
+# BlueField-4 NIC firmware version reported by the mlx5 driver via
+# devlink; works without an MST device. $1 selects the "running" or
+# "stored" (flashed, possibly pending activation) section.
+get_devlink_nic_fw()
+{
+	local section="${1:-running}"
+	local bdf
+
+	bdf=$(lspci -nD -d 15b3: 2>/dev/null | grep -E "a2df" | head -1 | cut -d' ' -f1)
+	[ -z "$bdf" ] && return 1
+
+	devlink dev info pci/${bdf} 2>/dev/null | awk -v s="${section}:" '
+		$1 == s {f=1; next}
+		$1 ~ /:$/ {f=0}
+		f && $1 == "fw.version" {print $2; exit}'
+}
+
 if [ -e "$BOOTIMG_LOCATION" ]; then
 	BUILD_ATF=$(strings $BOOTIMG_LOCATION | grep -m 1 "(\(release\|debug\))")
 	BUILD_UEFI=$(strings -e l $BOOTIMG_LOCATION | grep "BlueField" |\
@@ -184,6 +201,19 @@ case "$MST_DEVICE" in
 esac
 
 if [ -z "$DEV_TYPE" ]; then
+	# MST device is not available; identify BlueField-4 by the PCI
+	# device ID of its integrated network controller (0xa2df).
+	for bdf in /sys/bus/pci/devices/*; do
+		if grep -qi "0x15b3" ${bdf}/vendor 2>/dev/null && \
+		   grep -qi "0xa2df" ${bdf}/device 2>/dev/null; then
+			DEVICE_GEN="bf4"
+			DEV_TYPE="BlueField4"
+			break
+		fi
+	done
+fi
+
+if [ -z "$DEV_TYPE" ]; then
 	echo "Warning: Unknown BlueField device type" >&2
 fi
 ATF_FW=""
@@ -211,12 +241,22 @@ if [ -n "$MST_DEVICE" ]; then
 		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$MST_DEVICE")
 		CEC_FW=$(get_misoc_version "CEC" 0 "$MST_DEVICE")
 		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$MST_DEVICE")
-	elif [ "$DEVICE_GEN" = "bf4" ]; then
-		GRACE_FW=$(get_grace_fw)
 	fi
 fi
 
+# Grace firmware version comes from SMBIOS; no MST device is needed
+if [ "$DEVICE_GEN" = "bf4" ]; then
+	GRACE_FW=$(get_grace_fw)
+fi
+
 # Fallbacks if register queries failed
+[ -z "$NIC_FW" ] && NIC_FW=$(get_devlink_nic_fw running)
+if [ -z "$NIC_FW_PENDING" ]; then
+	nic_fw_stored=$(get_devlink_nic_fw stored)
+	if [ -n "$nic_fw_stored" ] && [ "$nic_fw_stored" != "$NIC_FW" ]; then
+		NIC_FW_PENDING="$nic_fw_stored"
+	fi
+fi
 [ -z "$NIC_FW" ] && NIC_FW=$(get_packaged_nic_fw)
 if [ "$DEVICE_GEN" != "bf4" ]; then
 	[ -z "$ATF_FW" ] && ATF_FW="$BUILD_ATF"
