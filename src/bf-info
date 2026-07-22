@@ -184,6 +184,19 @@ case "$MST_DEVICE" in
 esac
 
 if [ -z "$DEV_TYPE" ]; then
+	# MST device is not available; identify BlueField-4 by the PCI
+	# device ID of its integrated network controller (0xa2df).
+	for bdf in /sys/bus/pci/devices/*; do
+		if grep -qi "0x15b3" ${bdf}/vendor 2>/dev/null && \
+		   grep -qi "0xa2df" ${bdf}/device 2>/dev/null; then
+			DEVICE_GEN="bf4"
+			DEV_TYPE="BlueField4"
+			break
+		fi
+	done
+fi
+
+if [ -z "$DEV_TYPE" ]; then
 	echo "Warning: Unknown BlueField device type" >&2
 fi
 ATF_FW=""
