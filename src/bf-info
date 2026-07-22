@@ -224,9 +224,12 @@ if [ -n "$MST_DEVICE" ]; then
 		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$MST_DEVICE")
 		CEC_FW=$(get_misoc_version "CEC" 0 "$MST_DEVICE")
 		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$MST_DEVICE")
-	elif [ "$DEVICE_GEN" = "bf4" ]; then
-		GRACE_FW=$(get_grace_fw)
 	fi
+fi
+
+# Grace firmware version comes from SMBIOS; no MST device is needed
+if [ "$DEVICE_GEN" = "bf4" ]; then
+	GRACE_FW=$(get_grace_fw)
 fi
 
 # Fallbacks if register queries failed
