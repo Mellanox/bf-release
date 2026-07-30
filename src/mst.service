@@ -1,0 +1,23 @@
+[Unit]
+Description=Create MST device nodes (/dev/mst)
+# MFT is not a dependency of bf-release (the BF4 ISO installs bf-release
+# before the package set that pulls MFT in), so skip cleanly when absent.
+ConditionPathExists=/usr/bin/mst
+# The IPMI sensor daemon reads chip temperature through /dev/mst.
+Before=mlx_ipmid.service set_emu_param.service
+
+[Service]
+# oneshot so the ordering above is a real barrier: the Before= units do not
+# start until "mst start" has exited, not merely been spawned.
+Type=oneshot
+# Report "active (exited)" after success instead of "inactive (dead)".
+RemainAfterExit=yes
+ExecStart=/usr/bin/mst start
+# Type=oneshot disables the start timeout by default, so without this a wedged
+# "mst start" would block boot indefinitely.
+TimeoutStartSec=60s
+# No ExecStop: "mst stop" would tear /dev/mst out from under live consumers on
+# restart, and leaving the modules loaded through shutdown costs nothing.
+
+[Install]
+WantedBy=multi-user.target

@@ -77,6 +77,10 @@ install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 install -d %{buildroot}/etc/systemd/system/ovsdb-server.service.d
 %endif
 
+# MST device nodes (/dev/mst) at boot
+install -d %{buildroot}/usr/lib/systemd/system
+install -m 0644 src/mst.service %{buildroot}/usr/lib/systemd/system/mst.service
+
 # Network configuration
 cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
@@ -291,6 +295,7 @@ enable_service()
     service_name=$1
 
     if ! (systemctl list-unit-files 2>&1 | grep -w ^$service_name); then
+        echo "bf-release: WARNING: unit '$service_name' not found, not enabling" >&2
         return
     fi
     systemctl unmask $service_name || true
@@ -331,6 +336,27 @@ disable_service strongswan-starter.service
 
 fi
 
+# The block above only runs on first install ($1 -eq 1); enable on upgrade too.
+# Works offline, which is what chroot-based image builds need.
+if command -v systemctl > /dev/null 2>&1; then
+    systemctl --no-reload enable mst.service > /dev/null 2>&1 || :
+fi
+
+# On a live system only, start it now so /dev/mst appears without a reboot.
+# /run/systemd/system exists only when systemd is running as PID 1, so this is
+# inert in build chroots. Mirrors what debhelper generates for the deb.
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload > /dev/null 2>&1 || :
+    systemctl start mst.service > /dev/null 2>&1 || :
+fi
+
+%preun
+if [ $1 -eq 0 ]; then
+    if command -v systemctl > /dev/null 2>&1; then
+        systemctl --no-reload disable mst.service > /dev/null 2>&1 || :
+    fi
+fi
+
 %files
 /etc/mlnx-release
 
@@ -358,6 +384,7 @@ fi
 /etc/sysconfig/network-scripts/*
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
+/usr/lib/systemd/system/mst.service
 %if ! 0%{?oraclelinux}
 /etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf

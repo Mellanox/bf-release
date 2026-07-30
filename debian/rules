@@ -87,6 +87,11 @@ endif
 	install -m 0644	src/override-openvswitch-switch          debian/$(pname)/etc/systemd/system/ovsdb-server.service.d/override.conf
 	install -m 0644	src/override-openibd                     debian/$(pname)/etc/systemd/system/openibd.service.d/override.conf
 
+	# MST device nodes (/dev/mst) at boot. Must be lib/systemd/system:
+	# dh_systemd_enable/dh_systemd_start scan only that directory.
+	dh_installdirs -p$(pname) lib/systemd/system
+	install -m 0644	src/mst.service				debian/$(pname)/lib/systemd/system/mst.service
+
 	# Network configuration
 ifeq ($(DIST_NAME_L), debian)
 	dh_installdirs -p$(pname)  etc/network/interfaces.d

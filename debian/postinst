@@ -5,6 +5,7 @@ enable_service()
 	service_name=$1
 
 	if ! (systemctl list-unit-files 2>&1 | grep -w ^$service_name); then
+		echo "bf-release: WARNING: unit '$service_name' not found, not enabling" >&2
 		return
 	fi
 	systemctl unmask $service_name || true
