@@ -623,16 +623,41 @@ EOF
 	mkdir -p /var/lib/sfc-hbn
 	touch /var/lib/sfc-hbn/install-pending
 
-	# Block SSH until the deferred install completes on first boot, so users
-	# cannot log in to a half-configured system. first_boot_install.sh unmasks
-	# and starts it again at the very end. Console/rshim access stays available
-	# for debugging if the deferred install fails.
+	# Block SSH so users cannot log in to a half-configured system. Best
+	# effort: provisioning-install.sh below re-arranges SSH itself
+	# (configure_ssh, mgmt VRF) so it can come up early on first boot while
+	# install.sh is still wiring.
 	systemctl stop ssh.socket ssh.service >/dev/null 2>&1 || true
 	systemctl disable ssh.socket ssh.service >/dev/null 2>&1 || true
 
 	# Arm the deferred one-shot. The unit is already installed at
 	# /etc/systemd/system/sfc-hbn-deferred-install.service by the sfc-hbn package.
 	systemctl enable sfc-hbn-deferred-install.service
+
+	# Drop the default sfnum-0 SFs staged by configure_sfs(): without the
+	# post-install reboot they would linger next to the SFs that install.sh creates.
+	: > /etc/mellanox/mlnx-sf.conf
+
+	# Run provisioning-install.sh in the chroot now so the post-install power cycle applies
+	# the reboot-requiring configuration. provisioning-done records success;
+	# without it the first-boot install.sh aborts.
+	log "INFO: Running SFC-HBN provisioning install (provisioning-install.sh)"
+	if BR_HBN_UPLINKS="${BR_HBN_UPLINKS}" BR_HBN_REPS="${BR_HBN_REPS}" BR_HBN_SFS="${BR_HBN_SFS}" \
+		BR_SFC_UPLINKS="${BR_SFC_UPLINKS}" BR_SFC_REPS="${BR_SFC_REPS}" BR_SFC_SFS="${BR_SFC_SFS}" \
+		BR_HBN_SFC_PATCH_PORTS="${BR_HBN_SFC_PATCH_PORTS}" LINK_PROPAGATION="${LINK_PROPAGATION}" \
+		ENABLE_BR_SFC="${ENABLE_BR_SFC}" ENABLE_BR_SFC_DEFAULT_FLOWS="${ENABLE_BR_SFC_DEFAULT_FLOWS}" \
+		CLOUD_OPTION="${CLOUD_OPTION}" HBN_PROFILE="${HBN_PROFILE}" HBN_IFNAME_WAIT_TIMEOUT="${HBN_IFNAME_WAIT_TIMEOUT}" \
+		HBN_IFNAME_WAIT_INTERVAL="${HBN_IFNAME_WAIT_INTERVAL}" BR_HBN_VF_GROUPS="${BR_HBN_VF_GROUPS}" \
+		BR_SFC_VF_GROUPS="${BR_SFC_VF_GROUPS}" \
+		/opt/mellanox/sfc-hbn/provisioning-install.sh ${ARG_PORT0} ${ARG_PORT1} >> $LOG 2>&1; then
+		touch /var/lib/sfc-hbn/provisioning-done
+		log "INFO: SFC-HBN provisioning install (provisioning-install.sh) completed"
+	else
+		rc=$?
+		RC=$((RC+rc))
+		err_msg="SFC-HBN provisioning install (provisioning-install.sh) failed"
+        log "ERROR: SFC-HBN provisioning install (provisioning-install.sh) failed with rc=$rc; see /var/log/sfc-install.log on the target"
+	fi
 }
 
 create_initramfs()
@@ -1914,11 +1939,7 @@ global_installation_flow()
 
 	update_uefi_boot_entries
 
-	if [ "X$ENABLE_SFC_HBN" == "Xyes" ]; then
-		stage_sfc_hbn_install
-	fi
-
-	if [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
+	if [ "X$ENABLE_SFC_HBN" == "Xyes" ] || [ "X$ENABLE_BR_HBN" == "Xyes" ]; then
 		stage_sfc_hbn_install
 	fi
 
