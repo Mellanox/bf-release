@@ -59,7 +59,7 @@ get_misoc_version()
 {
 	local component="$1"
 	local query_pending="${2:-0}"
-	local mst_device="$3"
+	local device="$3"
 	local type_num
 	
 	case "$component" in
@@ -71,7 +71,7 @@ get_misoc_version()
 	esac
 	
 	local output
-	output=$(mlxreg -d "$mst_device" --reg_name MISOC --get \
+	output=$(mlxreg -d "$device" --reg_name MISOC --get \
 		--index "type=${type_num},query_pending=${query_pending}" 2>&1)
 	
 	echo "$output" | grep -q "query_not_available.*0x00000001" && return 1
@@ -82,11 +82,11 @@ get_misoc_version()
 get_mcqi_version()
 {
 	local query_pending="${1:-0}"
-	local mst_device="$2"
+	local device="$2"
 	
 	local output
 	# Answer 'n' to mlxreg's confirmation prompt
-	output=$(printf "n" | mlxreg -d "$mst_device" --reg_name MCQI \
+	output=$(printf "n" | mlxreg -d "$device" --reg_name MCQI \
 		--set "info_type=1,data_size=0x34,offset=0" \
 		--indexes "component_index=0,device_index=1,read_pending_component=${query_pending},device_type=0" 2>&1)
 	
@@ -123,26 +123,27 @@ print_fw_line()
 get_packaged_nic_fw()
 {
 	local fw_binary
-	fw_binary=$(ls /opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_* 2>/dev/null | head -1)
+
+	if [ "$DEVICE_GEN" = "bf2" ]; then
+		fw_binary="/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41686"
+	elif [ "$DEVICE_GEN" = "bf3" ]; then
+		fw_binary="/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager_sriov_dis_aarch64_41692"
+	fi
 	[ -n "$fw_binary" ] && "$fw_binary" --list 2>/dev/null | head -3 | tail -1 | awk '{print $4}'
 }
 
 get_bmc_fw()
 {
-	if [ -e /lib/firmware/mellanox/bmc/bf2-bmc-fw.version ]; then
-		cat /lib/firmware/mellanox/bmc/bf2-bmc-fw.version
-	elif [ -e /lib/firmware/mellanox/bmc/bf3-bmc-fw.version ]; then
-		cat /lib/firmware/mellanox/bmc/bf3-bmc-fw.version
-	fi
+	local version_file=/lib/firmware/mellanox/bmc/${DEVICE_GEN}-bmc-fw.version
+
+	[ -e "$version_file" ] && cat "$version_file"
 }
 
 get_cec_fw()
 {
-	if [ -e /lib/firmware/mellanox/cec/bf2-cec-fw.version ]; then
-		cat /lib/firmware/mellanox/cec/bf2-cec-fw.version
-	elif [ -e /lib/firmware/mellanox/cec/bf3-cec-fw.version ]; then
-		cat /lib/firmware/mellanox/cec/bf3-cec-fw.version
-	fi
+	local version_file=/lib/firmware/mellanox/cec/${DEVICE_GEN}-cec-fw.version
+
+	[ -e "$version_file" ] && cat "$version_file"
 }
 
 get_grace_fw()
@@ -151,15 +152,11 @@ get_grace_fw()
 }
 
 # BlueField-4 NIC firmware version reported by the mlx5 driver via
-# devlink; works without an MST device. $1 selects the "running" or
-# "stored" (flashed, possibly pending activation) section.
+# devlink. $1 selects the "running" or "stored" (flashed, possibly pending activation) section.
 get_devlink_nic_fw()
 {
 	local section="${1:-running}"
-	local bdf
-
-	bdf=$(lspci -nD -d 15b3: 2>/dev/null | grep -E "a2df" | head -1 | cut -d' ' -f1)
-	[ -z "$bdf" ] && return 1
+	local bdf="${2}"
 
 	devlink dev info pci/${bdf} 2>/dev/null | awk -v s="${section}:" '
 		$1 == s {f=1; next}
@@ -190,28 +187,23 @@ if [ ! -n "$OFED" ]; then
 	OFED="in-box"
 fi
 
-MST_DEVICE=$(ls /dev/mst/*_pciconf0 2>/dev/null | head -1)
-
-case "$MST_DEVICE" in
-	*mt41682*) DEVICE_GEN="bf1"; DEV_TYPE="BlueField" ;;
-	*mt41686*) DEVICE_GEN="bf2"; DEV_TYPE="BlueField2" ;;
-	*mt41692*) DEVICE_GEN="bf3"; DEV_TYPE="BlueField3" ;;
-	*mt41695*) DEVICE_GEN="bf4"; DEV_TYPE="BlueField4" ;;
-	*)	     DEVICE_GEN="unknown"; DEV_TYPE="" ;;
-esac
-
-if [ -z "$DEV_TYPE" ]; then
-	# MST device is not available; identify BlueField-4 by the PCI
-	# device ID of its integrated network controller (0xa2df).
-	for bdf in /sys/bus/pci/devices/*; do
-		if grep -qi "0x15b3" ${bdf}/vendor 2>/dev/null && \
-		   grep -qi "0xa2df" ${bdf}/device 2>/dev/null; then
-			DEVICE_GEN="bf4"
-			DEV_TYPE="BlueField4"
-			break
-		fi
-	done
-fi
+DEV_TYPE=""
+DEVICE_GEN="unknown"
+REG_DEVICE=""
+# Identify bluefield device by PCI device ID.
+for bdf in /sys/bus/pci/devices/*; do
+	grep -qi "0x15b3" "${bdf}/vendor" 2>/dev/null || continue
+	dev_id=$(cat "${bdf}/device" 2>/dev/null)
+	case "$dev_id" in
+		0xa2d2) DEVICE_GEN="bf1"; DEV_TYPE="BlueField"  ;;
+		0xa2d6) DEVICE_GEN="bf2"; DEV_TYPE="BlueField2" ;;
+		0xa2dc) DEVICE_GEN="bf3"; DEV_TYPE="BlueField3" ;;
+		0xa2df) DEVICE_GEN="bf4"; DEV_TYPE="BlueField4" ;;
+		*)      continue ;;
+	esac
+	REG_DEVICE=$(basename "$bdf")
+	break
+done
 
 if [ -z "$DEV_TYPE" ]; then
 	echo "Warning: Unknown BlueField device type" >&2
@@ -228,35 +220,39 @@ CEC_FW=""
 CEC_FW_PENDING=""
 GRACE_FW=""
 
-if [ -n "$MST_DEVICE" ]; then
-	NIC_FW=$(get_mcqi_version 0 "$MST_DEVICE")
-	NIC_FW_PENDING=$(get_mcqi_version 1 "$MST_DEVICE")
+if [ -n "$REG_DEVICE" ]; then
+	NIC_FW=$(get_mcqi_version 0 "$REG_DEVICE")
+	NIC_FW_PENDING=$(get_mcqi_version 1 "$REG_DEVICE")
 	
 	if [ "$DEVICE_GEN" = "bf3" ]; then
-		ATF_FW=$(get_misoc_version "ATF" 0 "$MST_DEVICE")
-		ATF_PENDING=$(get_misoc_version "ATF" 1 "$MST_DEVICE")
-		UEFI_FW=$(get_misoc_version "UEFI" 0 "$MST_DEVICE")
-		UEFI_PENDING=$(get_misoc_version "UEFI" 1 "$MST_DEVICE")
-		BMC_FW=$(get_misoc_version "BMC" 0 "$MST_DEVICE")
-		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$MST_DEVICE")
-		CEC_FW=$(get_misoc_version "CEC" 0 "$MST_DEVICE")
-		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$MST_DEVICE")
+		ATF_FW=$(get_misoc_version "ATF" 0 "$REG_DEVICE")
+		ATF_PENDING=$(get_misoc_version "ATF" 1 "$REG_DEVICE")
+		UEFI_FW=$(get_misoc_version "UEFI" 0 "$REG_DEVICE")
+		UEFI_PENDING=$(get_misoc_version "UEFI" 1 "$REG_DEVICE")
+		BMC_FW=$(get_misoc_version "BMC" 0 "$REG_DEVICE")
+		BMC_FW_PENDING=$(get_misoc_version "BMC" 1 "$REG_DEVICE")
+		CEC_FW=$(get_misoc_version "CEC" 0 "$REG_DEVICE")
+		CEC_FW_PENDING=$(get_misoc_version "CEC" 1 "$REG_DEVICE")
 	fi
 fi
 
-# Grace firmware version comes from SMBIOS; no MST device is needed
+
+
 if [ "$DEVICE_GEN" = "bf4" ]; then
+	# Grace firmware version comes from SMBIOS
 	GRACE_FW=$(get_grace_fw)
+
+	# BF4 NIC FW fallback: fetch via devlink
+	[ -z "$NIC_FW" ] && NIC_FW=$(get_devlink_nic_fw running "$REG_DEVICE")
+	if [ -z "$NIC_FW_PENDING" ]; then
+		nic_fw_stored=$(get_devlink_nic_fw stored "$REG_DEVICE")
+		if [ -n "$nic_fw_stored" ] && [ "$nic_fw_stored" != "$NIC_FW" ]; then
+			NIC_FW_PENDING="$nic_fw_stored"
+		fi
+	fi
 fi
 
 # Fallbacks if register queries failed
-[ -z "$NIC_FW" ] && NIC_FW=$(get_devlink_nic_fw running)
-if [ -z "$NIC_FW_PENDING" ]; then
-	nic_fw_stored=$(get_devlink_nic_fw stored)
-	if [ -n "$nic_fw_stored" ] && [ "$nic_fw_stored" != "$NIC_FW" ]; then
-		NIC_FW_PENDING="$nic_fw_stored"
-	fi
-fi
 [ -z "$NIC_FW" ] && NIC_FW=$(get_packaged_nic_fw)
 if [ "$DEVICE_GEN" != "bf4" ]; then
 	[ -z "$ATF_FW" ] && ATF_FW="$BUILD_ATF"
