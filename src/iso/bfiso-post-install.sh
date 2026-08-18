@@ -515,9 +515,14 @@ update_efi_bootmgr()
 
 configure_services()
 {
-	ilog "$(/bin/systemctl enable serial-getty@ttyAMA0.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable serial-getty@ttyAMA1.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable serial-getty@hvc0.service > /dev/null 2>&1)"
+	if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
+		# Enable serial console services on BlueField-1/2/3 only,
+		# where ttyAMA0, ttyAMA1, and hvc0 interfaces are present.
+		# BF-1: 15b3:a2d2, BF-2: 15b3:a2d6, BF-3: 15b3:a2dc
+		ilog "$(/bin/systemctl enable serial-getty@ttyAMA0.service > /dev/null 2>&1)"
+		ilog "$(/bin/systemctl enable serial-getty@ttyAMA1.service > /dev/null 2>&1)"
+		ilog "$(/bin/systemctl enable serial-getty@hvc0.service > /dev/null 2>&1)"
+	fi
 	ilog "$(/bin/systemctl disable mlx-regex.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable NetworkManager.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable NetworkManager-wait-online.service > /dev/null 2>&1)"
