@@ -1,0 +1,12 @@
+[Unit]
+Description=Recover oob_net0 link if carrier is down
+After=NetworkManager.service networking.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/oob-link-recover.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

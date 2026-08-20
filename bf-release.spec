@@ -190,6 +190,11 @@ install -d %{buildroot}/%{_datadir}/%{name}
 # BFB Info
 install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
 
+# OOB link recovery (BlueField-4)
+install -d %{buildroot}/usr/lib/systemd/system
+install -m 0755	src/oob-link-recover.sh      %{buildroot}%{_sbindir}/oob-link-recover.sh
+install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system/oob-link-recover.service
+
 %post
 # RHCOS owns these paths via Ignition / MachineConfigOperator;
 # remove them on every install/upgrade so we don't conflict.
@@ -323,6 +328,7 @@ enable_service watchdog.service
 enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 enable_service kdump.service
+enable_service oob-link-recover.service
 
 disable_service openvswitch-ipsec
 disable_service ibacm.service
@@ -391,5 +397,8 @@ fi
 /var/lib/kubelet/config.yaml
 
 /usr/bin/bf-info
+
+%{_sbindir}/oob-link-recover.sh
+/usr/lib/systemd/system/oob-link-recover.service
 
 %changelog

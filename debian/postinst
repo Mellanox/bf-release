@@ -148,6 +148,7 @@ EOF
 		enable_service openvswitch-switch.service
 		enable_service watchdog.service
 		enable_service kdump.service
+		enable_service oob-link-recover.service
 
 		disable_service openvswitch-ipsec
 		disable_service srp_daemon.service
