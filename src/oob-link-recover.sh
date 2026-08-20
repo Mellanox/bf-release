@@ -28,6 +28,16 @@ if [ ! -e "$CARRIER_FILE" ]; then
     exit 0
 fi
 
+# The LAN743x TX DMA controller can stall while reading TX descriptors
+# when scatter-gather is enabled, freezing all TX on the OOB interface
+# while carrier stays up. Keep scatter-gather disabled on this interface;
+# re-applying an already-off setting is a no-op.
+echo "${IF}: disabling scatter-gather (LAN743x TX DMA stall workaround)"
+ethtool -K "$IF" sg off || {
+    echo "${IF}: failed to disable scatter-gather" >&2
+    true
+}
+
 CARRIER="$(cat "$CARRIER_FILE" 2>/dev/null)" || {
     echo "${IF}: cannot read carrier state, exiting"
     exit 0

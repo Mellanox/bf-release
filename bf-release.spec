@@ -15,6 +15,7 @@ Requires: acpid
 Requires: grub2-tools
 Requires: NetworkManager
 Requires: mlnx-tools
+Requires: ethtool
 %if !0%{?oraclelinux}
 Requires: mlnx-ofa_kernel
 %endif
