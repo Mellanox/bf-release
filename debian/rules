@@ -152,6 +152,11 @@ endif
 	install -m 0755 src/iso/bfiso-post-install.sh debian/$(pname)/usr/sbin/bfiso-post-install.sh
 	install -m 0755 src/dpu-bmc-upgrade debian/$(pname)/usr/sbin/dpu-bmc-upgrade
 
+	# OOB link recovery (BlueField-4)
+	dh_installdirs -p$(pname)  usr/lib/systemd/system
+	install -m 0755 src/oob-link-recover.sh      debian/$(pname)/usr/sbin/oob-link-recover.sh
+	install -m 0644 src/oob-link-recover.service debian/$(pname)/usr/lib/systemd/system/oob-link-recover.service
+
 	# BTRFS deferred update / rollback
 	install -m0755 src/btrfs-deferred-update.sh debian/$(pname)/usr/sbin/btrfs-deferred-update.sh
 	install -m0755 src/btrfs-rollback.sh debian/$(pname)/usr/sbin/btrfs-rollback.sh
