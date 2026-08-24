@@ -136,6 +136,17 @@ EOF
 chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 
+# Oracle Linux requires a longer timeout for rdma-load-modules@infiniband
+# due to slower InfiniBand module loading during boot.
+%if 0%{?oraclelinux}
+install -d "%{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d"
+cat > "%{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf" << EOF
+[Service]
+TimeoutStartSec=6min
+EOF
+chmod 644 %{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf
+%endif
+
 install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
@@ -373,6 +384,7 @@ fi
 /etc/NetworkManager/conf.d/*
 %if 0%{?oraclelinux}
 /etc/dracut.conf.d/mlnx.conf
+/etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf
 %endif
 
 %dir /etc/mellanox
