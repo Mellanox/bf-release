@@ -321,18 +321,75 @@ EOF
 
 } # End of configure_target_os
 
+get_sf_netdev_name()
+{
+	# Derive the predictable SF netdev name from a PCI device address and SF index.
+	# BF3 (single domain 0000): enp<bus>s<slot>f<func>s<sf>
+	# BF4 (multi-domain):       enP<domain>p<bus>s<slot>f<func>S<sf>
+	local pciid=$1
+	local sf_index=${2:-0}
+	local domain bus slot func
+
+	domain=$(echo $pciid | awk -F: '{print $1}')
+	bus=$(echo $pciid | awk -F: '{print $2}')
+	slot=$(echo $pciid | awk -F'[:.]' '{print $3}')
+	func=$(echo $pciid | awk -F'[:.]' '{print $4}')
+
+	# Strip leading zeros for the naming scheme
+	local bus_dec=$((16#$bus))
+	local domain_dec=$((16#$domain))
+	local slot_dec=$((16#$slot))
+	local func_dec=$((16#$func))
+
+	if [ $domain_dec -eq 0 ]; then
+		# Single domain (BF3 and earlier): enp<bus>s<slot>f<func>s<sf>
+		echo "enp${bus_dec}s${slot_dec}f${func_dec}s${sf_index}"
+	else
+		# Multi-domain (BF4): enP<domain>p<bus>s<slot>f<func>S<sf>
+		echo "enP${domain_dec}p${bus_dec}s${slot_dec}f${func_dec}S${sf_index}"
+	fi
+}
+
 configure_network()
 {
 	ilog "Configure network for SF interfaces:"
-	num_ports=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | wc -l)
+	local all_pci_devs=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
+
+	if [ -z "$all_pci_devs" ]; then
+		ilog "No network interfaces found"
+		return
+	fi
+
+	# Determine which PCI devices have SFs.
+	# BF4 (multi-domain): multiple PCI functions per domain but only function 0
+	#   per domain has an SF (e.g. 0002:01:00.0 and 0006:01:00.0).
+	# BF3 and earlier (single domain 0000): each PCI function has an SF
+	#   (e.g. 0000:03:00.0 and 0000:03:00.1).
+	local sf_pci_devs=""
+	if is_bf4; then
+		local -A seen_domains
+		for pciid in $all_pci_devs; do
+			local domain="${pciid%%:*}"
+			if [ -z "${seen_domains[$domain]:-}" ]; then
+				seen_domains[$domain]=1
+				sf_pci_devs="${sf_pci_devs} ${pciid}"
+			fi
+		done
+	else
+		sf_pci_devs="$all_pci_devs"
+	fi
+	sf_pci_devs=$(echo $sf_pci_devs)
+
+	local num_ports=$(echo "$sf_pci_devs" | wc -w)
 	if [ $num_ports -lt 1 ]; then
 		ilog "No network interfaces found"
 		return
 	fi
-	for port in $(seq 1 $num_ports); do
-		p=$((port - 1))
-		interface="enp3s0f${p}s0"
-		ilog "Configuring network interface $port"
+
+	local port=0
+	for pciid in $sf_pci_devs; do
+		interface=$(get_sf_netdev_name $pciid 0)
+		ilog "Configuring network interface $((port + 1)) ($interface) for PCI device $pciid"
 		if [ -d /etc/sysconfig/network-scripts/ ]; then
 			cat > /etc/sysconfig/network-scripts/ifcfg-${interface} << EOF
 NAME="${interface}"
@@ -347,16 +404,16 @@ EOF
 			chmod 600 /etc/sysconfig/network-scripts/ifcfg-${interface}
 			ilog "Created configuration for network interface ${interface}: /etc/sysconfig/network-scripts/ifcfg-${interface}"
 		elif [ -d /etc/netplan/ ]; then
-			cat > /etc/netplan/60-mlnx-${p}.yaml << EOF
+			cat > /etc/netplan/60-mlnx-${port}.yaml << EOF
 network:
   version: 2
-  renderer: networkd
   ethernets:
     ${interface}:
+      renderer: networkd
       dhcp4: 'true'
 EOF
-			chmod 600 /etc/netplan/60-mlnx-${p}.yaml
-			ilog "Created configuration for network interface ${interface}: /etc/netplan/60-mlnx-${p}.yaml"
+			chmod 600 /etc/netplan/60-mlnx-${port}.yaml
+			ilog "Created configuration for network interface ${interface}: /etc/netplan/60-mlnx-${port}.yaml"
 		elif [ -d /etc/network/interfaces.d/ ]; then
 			cat > /etc/network/interfaces.d/${interface} << EOF
 auto ${interface}
@@ -368,10 +425,12 @@ EOF
 			ilog "Unknown network configuration environment"
 			return 1
 		fi
+		port=$((port + 1))
 	done
 
 	if [ $num_ports -eq 1 ]; then
 		ilog "Removing configuration for the second network interface on one port devices"
+		# Clean up BF3-style names
 		if [ -f /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0 ]; then
 			/bin/rm -f /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0
 			ilog "Removed configuration for network interface enp3s0f1s0: /etc/sysconfig/network-scripts/ifcfg-enp3s0f1s0"
@@ -382,7 +441,7 @@ EOF
 		fi
 		if [ -f /etc/netplan/60-mlnx-1.yaml ]; then
 			/bin/rm -f /etc/netplan/60-mlnx-1.yaml
-			ilog "Removed configuration for network interface enp3s0f1s0: /etc/netplan/60-mlnx-1.yaml"
+			ilog "Removed configuration for network interface: /etc/netplan/60-mlnx-1.yaml"
 		fi
 	fi
 
