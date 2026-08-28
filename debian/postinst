@@ -158,6 +158,8 @@ EOF
 		disable_service opensmd.service
 		disable_service unattended-upgrades.service
 		disable_service apt-daily-upgrade.timer
+		disable_service apt-daily.timer
+		disable_service apt-daily.service
 		disable_service strongswan-starter.service
 	fi
 fi

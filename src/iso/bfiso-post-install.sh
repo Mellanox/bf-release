@@ -599,6 +599,8 @@ configure_services()
 	ilog "$(/bin/systemctl disable opensmd.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable unattended-upgrades.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable apt-daily-upgrade.timer > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl disable apt-daily.timer > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl disable apt-daily.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable docker.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable docker.socket > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable kubelet.service > /dev/null 2>&1)"
