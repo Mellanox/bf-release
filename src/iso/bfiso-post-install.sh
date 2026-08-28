@@ -45,11 +45,18 @@ RC=0
 err_msg=""
 export LC_ALL=C
 
+# Check once whether this is a BlueField-1/2/3 platform (rshim logging supported)
+if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
+    BF_HAS_RSHIM=1
+fi
+
 rlog()
 {
-    msg=$(echo "$*" | sed 's/INFO://;s/ERROR:/ERR/;s/WARNING:/WARN/')
-    if [ -n "$rshimlog" ]; then
-        $rshimlog "$msg"
+    if [ -n "$BF_HAS_RSHIM" ]; then
+        msg=$(echo "$*" | sed 's/INFO://;s/ERROR:/ERR/;s/WARNING:/WARN/')
+        if [ -n "$rshimlog" ]; then
+            $rshimlog "$msg" || true
+        fi
     fi
 }
 
