@@ -142,7 +142,7 @@ chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
 install -d "%{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d"
 cat > "%{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf" << EOF
 [Service]
-TimeoutStartSec=6min
+TimeoutStartSec=20min
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf
 %endif
