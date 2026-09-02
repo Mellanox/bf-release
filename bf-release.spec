@@ -207,7 +207,7 @@ if [ -e /etc/os-release ]; then
 fi
 
 # Network interface configuration (BF-version–dependent)
-# tmfifo_net0 exists on BlueField-1/2/3 only; oob_net0 exists on all versions.
+# tmfifo_net0 exists on BlueField-1/2/3; nodnic0 on BlueField-4; oob_net0 on all.
 if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
     # BlueField-1/2/3: install tmfifo_net udev rule and ifcfg
     install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
@@ -219,6 +219,20 @@ PREFIX=30
 DNS1=192.168.100.1
 NAME=tmfifo_net0
 DEVICE=tmfifo_net0
+ONBOOT=yes
+GATEWAY=192.168.100.1
+IPV4_ROUTE_METRIC=1025
+EOF
+else
+    # BlueField-4: configure nodnic0 (Host-to-Grace interface)
+    cat > /etc/sysconfig/network-scripts/ifcfg-nodnic0 << EOF
+TYPE=Ethernet
+BOOTPROTO=none
+IPADDR=192.168.100.2
+PREFIX=30
+DNS1=192.168.100.1
+NAME=nodnic0
+DEVICE=nodnic0
 ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
