@@ -237,6 +237,19 @@ ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
+    # BlueField-4: configure vlan4040 on oob_net0 for BMC communication
+    cat > /etc/sysconfig/network-scripts/ifcfg-vlan4040 << EOF
+VLAN=yes
+VLAN_ID=4040
+PHYSDEV=oob_net0
+TYPE=Vlan
+NAME=vlan4040
+DEVICE=vlan4040
+ONBOOT=yes
+BOOTPROTO=none
+IPADDR=192.168.240.2
+PREFIX=29
+EOF
 fi
 
 cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
