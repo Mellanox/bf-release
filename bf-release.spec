@@ -64,7 +64,7 @@ install -m 0644	src/90-bluefield.conf	%{buildroot}/usr/lib/sysctl.d/
 
 # UDEV rules
 install -d %{buildroot}/lib/udev/rules.d
-install -m 0644 src/91-tmfifo_net.rules		%{buildroot}/lib/udev/rules.d
+# 91-tmfifo_net.rules is created in %post (BF-1/2/3 only)
 install -m 0644 src/92-oob_net.rules		%{buildroot}/lib/udev/rules.d
 install -m 0644 src/93-nodnic.rules		%{buildroot}/lib/udev/rules.d
 
@@ -78,29 +78,7 @@ install -d %{buildroot}/etc/systemd/system/openvswitch.service.d
 install -d %{buildroot}/etc/systemd/system/ovsdb-server.service.d
 %endif
 
-# Network configuration
-cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
-TYPE=Ethernet
-BOOTPROTO=none
-IPADDR=192.168.100.2
-PREFIX=30
-DNS1=192.168.100.1
-NAME=tmfifo_net0
-DEVICE=tmfifo_net0
-ONBOOT=yes
-GATEWAY=192.168.100.1
-IPV4_ROUTE_METRIC=1025
-EOF
-
-cat > %{buildroot}/etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
-NAME="oob_net0"
-DEVICE="oob_net0"
-NM_CONTROLLED="yes"
-PEERDNS="yes"
-ONBOOT="yes"
-BOOTPROTO="dhcp"
-TYPE=Ethernet
-EOF
+# Network interface configuration is created in %post (BF-version–dependent)
 
 cat > %{buildroot}/etc/systemd/system/NetworkManager-wait-online.service.d/override.conf << EOF
 [Service]
@@ -198,6 +176,7 @@ install -m 0644	src/crictl.yaml      %{buildroot}/etc/crictl.yaml
 install -m 0644	src/config.yaml      %{buildroot}/var/lib/kubelet/config.yaml
 install -d %{buildroot}/usr/bin
 install -d %{buildroot}/%{_datadir}/%{name}
+install -m 0644 src/91-tmfifo_net.rules		%{buildroot}/%{_datadir}/%{name}/
 
 # BFB Info
 install -m 0755	src/bf-info           %{buildroot}/usr/bin/bf-info
@@ -226,6 +205,35 @@ if [ -e /etc/os-release ]; then
               /var/lib/kubelet/config.yaml
     fi
 fi
+
+# Network interface configuration (BF-version–dependent)
+# tmfifo_net0 exists on BlueField-1/2/3 only; oob_net0 exists on all versions.
+if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
+    # BlueField-1/2/3: install tmfifo_net udev rule and ifcfg
+    install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
+    cat > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
+TYPE=Ethernet
+BOOTPROTO=none
+IPADDR=192.168.100.2
+PREFIX=30
+DNS1=192.168.100.1
+NAME=tmfifo_net0
+DEVICE=tmfifo_net0
+ONBOOT=yes
+GATEWAY=192.168.100.1
+IPV4_ROUTE_METRIC=1025
+EOF
+fi
+
+cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
+NAME="oob_net0"
+DEVICE="oob_net0"
+NM_CONTROLLED="yes"
+PEERDNS="yes"
+ONBOOT="yes"
+BOOTPROTO="dhcp"
+TYPE=Ethernet
+EOF
 
 if [ $1 -eq 1 ]; then
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
@@ -373,7 +381,8 @@ fi
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
-/etc/sysconfig/network-scripts/*
+%{_datadir}/%{name}/91-tmfifo_net.rules
+%dir /etc/sysconfig/network-scripts
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
 %if ! 0%{?oraclelinux}
