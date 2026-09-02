@@ -187,24 +187,8 @@ install -m 0755	src/oob-link-recover.sh      %{buildroot}%{_sbindir}/oob-link-re
 install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system/oob-link-recover.service
 
 %post
-# RHCOS owns these paths via Ignition / MachineConfigOperator;
-# remove them on every install/upgrade so we don't conflict.
-# RHCOS reports ID=rhel, so VARIANT_ID is the real discriminator.
-if [ -e /etc/os-release ]; then
-    . /etc/os-release
-    if [ "${VARIANT_ID}" = "coreos" ]; then
-        rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 \
-              /etc/sysconfig/network-scripts/ifcfg-oob_net0 \
-              /etc/NetworkManager/conf.d/40-mlnx.conf \
-              /etc/NetworkManager/conf.d/45-mlnx-dns.conf \
-              /etc/containerd/config-mlnx.toml \
-              /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf \
-              /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf \
-              /etc/cni/net.d/99-loopback.conf \
-              /etc/crictl.yaml \
-              /var/lib/kubelet/config.yaml
-    fi
-fi
+# Install and not Upgrade
+if [ $1 -eq 1 ]; then
 
 # Network interface configuration (BF-version–dependent)
 # tmfifo_net0 exists on BlueField-1/2/3; nodnic0 on BlueField-4; oob_net0 on all.
@@ -262,7 +246,6 @@ BOOTPROTO="dhcp"
 TYPE=Ethernet
 EOF
 
-if [ $1 -eq 1 ]; then
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
     ofed_minor=${ofed_version#*-}
@@ -382,6 +365,25 @@ disable_service ibacm.service
 disable_service opensmd.service
 disable_service strongswan-starter.service
 
+fi # END: Install and not upgrade
+
+# RHCOS owns these paths via Ignition / MachineConfigOperator;
+# remove them on every install/upgrade so we don't conflict.
+# RHCOS reports ID=rhel, so VARIANT_ID is the real discriminator.
+if [ -e /etc/os-release ]; then
+    . /etc/os-release
+    if [ "${VARIANT_ID}" = "coreos" ]; then
+        /bin/rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 \
+              /etc/sysconfig/network-scripts/ifcfg-oob_net0 \
+              /etc/NetworkManager/conf.d/40-mlnx.conf \
+              /etc/NetworkManager/conf.d/45-mlnx-dns.conf \
+              /etc/containerd/config-mlnx.toml \
+              /usr/lib/systemd/system/containerd.service.d/90-containerd-mlnx-config.conf \
+              /usr/lib/systemd/system/kubelet.service.d/90-kubelet-bluefield.conf \
+              /etc/cni/net.d/99-loopback.conf \
+              /etc/crictl.yaml \
+              /var/lib/kubelet/config.yaml
+    fi
 fi
 
 %files
