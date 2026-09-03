@@ -190,12 +190,14 @@ install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system
 # Install and not Upgrade
 if [ $1 -eq 1 ]; then
 
-# Network interface configuration (BF-version–dependent)
+# Network interface configuration
+# Install all configs unconditionally — the package may be preinstalled
+# during OS image build where lspci is not available.
 # tmfifo_net0 exists on BlueField-1/2/3; nodnic0 on BlueField-4; oob_net0 on all.
-if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
-    # BlueField-1/2/3: install tmfifo_net udev rule and ifcfg
-    install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
-    cat > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
+
+# BlueField-1/2/3: tmfifo_net udev rule and ifcfg
+install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
+cat > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
 IPADDR=192.168.100.2
@@ -207,9 +209,9 @@ ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
-else
-    # BlueField-4: configure nodnic0 (Host-to-Grace interface)
-    cat > /etc/sysconfig/network-scripts/ifcfg-nodnic0 << EOF
+
+# BlueField-4: nodnic0 (Host-to-Grace interface)
+cat > /etc/sysconfig/network-scripts/ifcfg-nodnic0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
 IPADDR=192.168.100.2
@@ -221,8 +223,9 @@ ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
-    # BlueField-4: configure vlan4040 on oob_net0 for BMC communication
-    cat > /etc/sysconfig/network-scripts/ifcfg-vlan4040 << EOF
+
+# BlueField-4: vlan4040 on oob_net0 for BMC communication
+cat > /etc/sysconfig/network-scripts/ifcfg-vlan4040 << EOF
 VLAN=yes
 VLAN_ID=4040
 PHYSDEV=oob_net0
@@ -234,6 +237,16 @@ BOOTPROTO=none
 IPADDR=192.168.240.2
 PREFIX=29
 EOF
+
+# On real hardware, remove configs irrelevant to the detected BF version
+if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
+    # BlueField-1/2/3: remove BF4-only configs
+    /bin/rm -f /etc/sysconfig/network-scripts/ifcfg-nodnic0
+    /bin/rm -f /etc/sysconfig/network-scripts/ifcfg-vlan4040
+elif (lspci -nD 2> /dev/null | grep -q 15b3:); then
+    # BlueField-4: remove BF1/2/3-only configs
+    /bin/rm -f /lib/udev/rules.d/91-tmfifo_net.rules
+    /bin/rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0
 fi
 
 cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
