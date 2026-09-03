@@ -27,6 +27,7 @@ if [ "$1" = "configure" ]; then
 
 		# Omit iscsi from dracut modules to remove unrelevant error during upgrade
 		# Note: Leading and trailing spaces inside the quotes — dracut requires them for += list options.
+		mkdir -p /etc/dracut.conf.d
 		echo 'omit_dracutmodules+=" iscsi "' | sudo tee /etc/dracut.conf.d/01-bf-omit-iscsi.conf
 
 		# Refresh module deps for every installed kernel so a
