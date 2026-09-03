@@ -36,6 +36,9 @@ FW_DIR=/opt/mellanox/mlnx-fw-updater/firmware/
 PROVIDED_NIC_FW_VERSION=""
 SET_EXT4_JOURNAL_DATA=${SET_EXT4_JOURNAL_DATA:-"yes"}
 
+# Enable mlx5_core async probe on BF-4 (default: no)
+ENABLE_MLX5_ASYNC_PROBE=${ENABLE_MLX5_ASYNC_PROBE:-"no"}
+
 distro="Ubuntu"
 logfile=${distro}.installation.log
 LOG=/root/$logfile
@@ -748,7 +751,11 @@ configure_grub()
 	fi
 
 	if (lscpu 2>&1 | grep -wq Grace); then
-		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 biosdevname=0 iommu.passthrough=1 driver_async_probe=mlx5_core\"@" /etc/default/grub
+		async_probe=""
+		if [ "${ENABLE_MLX5_ASYNC_PROBE}" = "yes" ]; then
+			async_probe=" driver_async_probe=mlx5_core"
+		fi
+		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 biosdevname=0 iommu.passthrough=1${async_probe}\"@" /etc/default/grub
 	elif (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
