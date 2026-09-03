@@ -135,8 +135,6 @@ EOF
 		# Enable tmpfs
 		enable_service /usr/share/systemd/tmp.mount
 
-		enable_service NetworkManager.service
-		enable_service NetworkManager-wait-online.service
 		enable_service acpid.service
 		enable_service openibd
 		enable_service networking
@@ -151,6 +149,8 @@ EOF
 		enable_service kdump.service
 		enable_service oob-link-recover.service
 
+		disable_service NetworkManager.service
+		disable_service NetworkManager-wait-online.service
 		disable_service openvswitch-ipsec
 		disable_service srp_daemon.service
 		disable_service "srp_daemon_port@mlx5_0:1.service"

@@ -464,7 +464,7 @@ EOF
 		cat > /etc/netplan/70-nodnic-h2g.yaml << 'EOF'
 network:
   version: 2
-  renderer: NetworkManager
+  renderer: networkd
   ethernets:
     # NODNIC Host-to-Grace interface (CX9 PCIe network emulation)
     # Interface name may vary — check with: ip link | grep nodnic
@@ -486,7 +486,7 @@ EOF
 		cat > /etc/netplan/71-vlan4040.yaml << 'EOF'
 network:
   version: 2
-  renderer: NetworkManager
+  renderer: networkd
   ethernets:
     oob_net0:
       dhcp4: true
@@ -593,8 +593,8 @@ configure_services()
 		ilog "$(/bin/systemctl enable serial-getty@hvc0.service > /dev/null 2>&1)"
 	fi
 	ilog "$(/bin/systemctl disable mlx-regex.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable NetworkManager.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable NetworkManager-wait-online.service > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl disable NetworkManager.service > /dev/null 2>&1)"
+	ilog "$(/bin/systemctl disable NetworkManager-wait-online.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable networking.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable mlnx_snap.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable acpid.service > /dev/null 2>&1)"
