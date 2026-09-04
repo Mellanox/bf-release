@@ -755,7 +755,7 @@ configure_grub()
 		if [ "${ENABLE_MLX5_ASYNC_PROBE}" = "yes" ]; then
 			async_probe=" driver_async_probe=mlx5_core"
 		fi
-		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 biosdevname=0 iommu.passthrough=1${async_probe}\"@" /etc/default/grub
+		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 iommu.passthrough=1${async_probe}\"@" /etc/default/grub
 	elif (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
