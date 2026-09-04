@@ -182,7 +182,27 @@ if [ -e "$BOOTIMG_LOCATION" ]; then
 
 fi
 
-OFED=`ofed_info -s 2> /dev/null | tr -d ':' | cut -d '-' -f2-`
+OFED=""
+# Attempt to determine OFED version via ofed_info.
+if [ -x "$(command -v ofed_info)" ]; then
+	# e.g. 26.07-0.7.7.0
+	OFED=`ofed_info -s 2> /dev/null | tr -d ':' | cut -d '-' -f2-`
+	# Grab the primary ofed version. e.g. 26.07-0.7.7.0 -> 26.07 -> 2607
+	ofed_ver=$(echo "$OFED" | cut -d '-' -f 1 | tr -d '.')
+	if [[ ! "$ofed_ver" =~ ^[0-9]+$ ]]; then
+		# If version is not a number, ignore it.
+		OFED=""
+	else
+		OFED="$ofed_ver"
+	fi
+fi
+# Fallback: Attempt to determine OFED version from mlnx-release.
+# Skip on oraclelinux to match previous behavior.
+if [ -z "$OFED" ] && [ ! -e /etc/oracle-release ]; then
+	# e.g. bf-bundle-3.6.0-22_26.10_ubuntu-24.04_prod -> 26.10 -> 2610
+	# e.g. bf-bundle-3.5.0-89_26.07_ubuntu-24.04_prod -> 26.07 -> 2607
+	OFED=$(cut -d _ -f 2 /etc/mlnx-release 2> /dev/null | tr -d '.')
+fi
 if [ ! -n "$OFED" ]; then
 	OFED="in-box"
 fi
@@ -274,8 +294,27 @@ get_version_and_release()
 	fi
 }
 
+list_ofed_packages()
+{
+	if [ -e /etc/debian_version ]; then
+		dpkg --list |
+		  grep -E "ibacm|ibarr|ibdump|ibsim|ibutils2|ibverbs-|infiniband-diags|libibmad|libibnetdisc|libibumad|libibverbs|libopensm|librdmacm[0-9]|librdmacm-|rdmacm-utils|libvma|libxlio|mlnx-ethtool|mlnx-iproute2|mlnx-tools|mlnx-fw-updater|mlnx-ofed-kernel|mlnx-nfsrdma|mlx-steering-dump|openmpi|opensm|[[:space:]]perftest|python3-pyverbs|rdma-core|sockperf|srptools|ucx|xpmem|dpcp" |
+		  awk 'NF {print "- " $2, $3}'
+	else
+		# Match on the name alone, so the ^-anchored patterns still apply.
+		rpm -qa --queryformat="[%{NAME} %{VERSION}-%{RELEASE}]\n" |
+		  awk -v pat='kernel-ib|dpcp|ibarr|ibdump|ibsim|ibutils2|^iser|kmod-iser|iser.*kmp|^isert|kmod-isert|isert.*kmp|kernel-mft|libvma|libxlio|mlnx-ethtool|mlnx-iproute2|mlnx-nfsrdma|mlnx-nvme|mlnx-ofa_kernel|mlnx-tools|mlx-steering-dump|multiperf|openmpi|opensm|openvswitch|perftest|rdma-core|ibacm|libibcm|libibumad|libibverbs|librdmacm|srp_daemon|infiniband-diags|python3-pyverbs|rshim|sockperf|^srp$|kmod-srp|srp.*kmp|ucx|^virtiofs$|kmod-virtiofs|virtiofs.*kmp|xpmem|neohost-backend|neohost-sdk' \
+		    '$1 ~ pat {print "- " $1, $2}'
+	fi
+}
+
 print_ofed()
 {
+	# If ofed >= 2607 or ofed_info is not present, use pattern-based package list, otherwise use ofed_info.
+	if [[ $OFED -ge 2607 || ! -x "$(command -v ofed_info)" ]]; then
+		list_ofed_packages
+		return
+	fi
 	if [ -e /etc/debian_version ]; then
 		ofed_info | sed -n '/^-------------------$/ { :a; n; p; ba; }' | awk 'NF {print "- " $2, $3}'
 	else
