@@ -129,8 +129,15 @@ install -d %{buildroot}/etc/NetworkManager/conf.d
 install -m 0644 src/40-mlnx.conf		%{buildroot}/etc/NetworkManager/conf.d/
 install -m 0644 src/45-mlnx-dns.conf	%{buildroot}/etc/NetworkManager/conf.d/
 
-%if 0%{?oraclelinux}
+# The RShim virtio-net device is created before switch-root. Ensure its udev
+# naming rule is available when the initial ACTION=="add" event is handled.
 install -d %{buildroot}/etc/dracut.conf.d
+cat > %{buildroot}/etc/dracut.conf.d/91-tmfifo-net.conf << EOF
+install_items+=" /lib/udev/rules.d/91-tmfifo_net.rules "
+EOF
+chmod 644 %{buildroot}/etc/dracut.conf.d/91-tmfifo-net.conf
+
+%if 0%{?oraclelinux}
 cat > %{buildroot}/etc/dracut.conf.d/mlnx.conf << EOF
 omit_drivers+=" mlx5_core mlx5_ib ib_umad "
 omit_dracutmodules+=" rdma rdma-load-modules@infiniband.service rdma-load-modules@rdma.service rdma-load-modules@roce.service "
@@ -433,6 +440,7 @@ fi
 /etc/systemd/system/ovsdb-server.service.d/override.conf
 %endif
 /etc/NetworkManager/conf.d/*
+/etc/dracut.conf.d/91-tmfifo-net.conf
 %if 0%{?oraclelinux}
 /etc/dracut.conf.d/mlnx.conf
 /etc/systemd/system/rdma-load-modules@infiniband.service.d/override.conf
