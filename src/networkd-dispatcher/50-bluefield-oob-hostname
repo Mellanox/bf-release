@@ -1,0 +1,135 @@
+#!/bin/sh
+set -eu
+
+OOB_IFACE="oob_net0"
+LOG_PREFIX="bf-release: ${OOB_IFACE} hostname fallback:"
+
+log()
+{
+	printf '%s %s\n' "$LOG_PREFIX" "$*" >&2
+}
+
+is_placeholder_hostname()
+{
+	case "$1" in
+		""|localhost|localhost.localdomain|localhost4|localhost4.localdomain4|localhost6|localhost6.localdomain6)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+is_valid_ipv4()
+{
+	awk -v address="$1" 'BEGIN {
+		if (split(address, octets, ".") != 4)
+			exit 1
+		for (i = 1; i <= 4; i++) {
+			if (octets[i] !~ /^[0-9]+$/ || octets[i] > 255)
+				exit 1
+		}
+	}'
+}
+
+is_valid_hostname()
+{
+	awk -v hostname="$1" 'BEGIN {
+		lowercase = tolower(hostname)
+		if (length(hostname) == 0 || length(hostname) > 64)
+			exit 1
+		if (hostname ~ /^[0-9.]+$/ || hostname !~ /^[A-Za-z0-9.-]+$/)
+			exit 1
+		if (lowercase == "localhost" || lowercase ~ /^localhost\./ || lowercase ~ /\.localhost$/)
+			exit 1
+		if (split(hostname, labels, ".") == 0)
+			exit 1
+		for (i in labels) {
+			if (length(labels[i]) == 0 || length(labels[i]) > 63)
+				exit 1
+			if (labels[i] !~ /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/)
+				exit 1
+		}
+	}'
+}
+
+lease_value()
+{
+	awk -F= -v key="$1" '
+		$1 == key {
+			print substr($0, index($0, "=") + 1)
+			exit
+		}
+	' "$2"
+}
+
+# networkd-dispatcher runs every routable hook for every interface.
+[ "${IFACE:-}" = "$OOB_IFACE" ] || exit 0
+
+# A non-empty /etc/hostname is administrator-owned persistent configuration.
+[ ! -s /etc/hostname ] || exit 0
+
+current_hostname=$(hostname 2>/dev/null || true)
+is_placeholder_hostname "$current_hostname" || exit 0
+
+ifindex_file="/sys/class/net/${OOB_IFACE}/ifindex"
+if [ ! -r "$ifindex_file" ]; then
+	log "cannot read interface index"
+	exit 0
+fi
+
+ifindex=$(cat "$ifindex_file")
+case "$ifindex" in
+	""|*[!0-9]*)
+		log "invalid interface index"
+		exit 0
+		;;
+esac
+
+lease_file="/run/systemd/netif/leases/${ifindex}"
+if [ ! -r "$lease_file" ]; then
+	log "DHCP lease is not available"
+	exit 0
+fi
+
+# DHCP-provided hostnames have precedence and are handled by networkd itself.
+lease_hostname=$(lease_value HOSTNAME "$lease_file" 2>/dev/null) || exit 0
+[ -z "$lease_hostname" ] || exit 0
+
+address=$(lease_value ADDRESS "$lease_file" 2>/dev/null) || exit 0
+if ! is_valid_ipv4 "$address"; then
+	log "lease does not contain a valid IPv4 address"
+	exit 0
+fi
+
+# Force the DNS NSS backend so nss-myhostname cannot synthesize localhost.
+lookup=""
+for attempt in 1 2; do
+	lookup=$(timeout 2 getent -s dns hosts "$address" 2>/dev/null || true)
+	[ -z "$lookup" ] || break
+	[ "$attempt" -eq 2 ] || sleep 1
+done
+ptr_hostname=$(printf '%s\n' "$lookup" | awk 'NF >= 2 { print $2; exit }')
+ptr_hostname=${ptr_hostname%.}
+
+if ! is_valid_hostname "$ptr_hostname"; then
+	log "no valid DNS PTR hostname for ${address}"
+	exit 0
+fi
+
+# Do not apply a stale lookup or replace a hostname set while DNS was queried.
+latest_address=$(lease_value ADDRESS "$lease_file" 2>/dev/null) || exit 0
+[ "$latest_address" = "$address" ] || exit 0
+latest_hostname=$(lease_value HOSTNAME "$lease_file" 2>/dev/null) || exit 0
+[ -z "$latest_hostname" ] || exit 0
+[ ! -s /etc/hostname ] || exit 0
+current_hostname=$(hostname 2>/dev/null || true)
+is_placeholder_hostname "$current_hostname" || exit 0
+
+if /usr/bin/hostnamectl --transient set-hostname "$ptr_hostname"; then
+	log "set transient hostname to ${ptr_hostname} from PTR for ${address}"
+else
+	log "failed to set transient hostname to ${ptr_hostname}"
+	exit 0
+fi
