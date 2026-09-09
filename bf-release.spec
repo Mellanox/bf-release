@@ -295,6 +295,14 @@ elif (lspci -nD 2> /dev/null | grep -q 15b3:); then
     /bin/rm -f ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection
 fi
 
+# Disable cloud-init network configuration to prevent it from
+# overwriting NetworkManager connection files on every boot.
+mkdir -p /etc/cloud/cloud.cfg.d
+cat > /etc/cloud/cloud.cfg.d/99-bf-network.cfg << EOF
+network:
+  config: disabled
+EOF
+
 %else
 
 # BlueField-1/2/3: tmfifo_net0
