@@ -570,3 +570,22 @@ fi
 /usr/lib/systemd/system/oob-link-recover.service
 
 %changelog
+* Wed Sep 09 2026 Vladimir Sokolovsky <vlad@nvidia.com>
+- spec: add Alinux support using NetworkManager nmconnection files
+- Add RedFish OS args to the kernel boot parameters
+
+* Sun Sep 06 2026 zeeve-nvidia <83271264+zeeve-nvidia@users.noreply.github.com>
+- Merge pull request #101 from SaherH/replace-ofed-info
+
+* Fri Sep 04 2026 Vladimir Sokolovsky <vlad@nvidia.com>
+- Remove biosdevname=0 and net.ifnames=0 boot parameters
+
+* Thu Sep 03 2026 Vladimir Sokolovsky <vlad@nvidia.com>
+- bf-release.spec: install all network configs unconditionally in %%post
+- Switch netplan renderer from NetworkManager to networkd
+- debian/postinst: Create dracut.conf.d directory before writing config
+- mlnx-bf.conf: Disable parallel switchdev by default
+- bfiso-post-install.sh: Make driver_async_probe configurable via bf.cfg
+
+* Thu Sep 03 2026 Saher Hajji <shajji@nvidia.com>
+- bf-info: replace ofed_info usage
