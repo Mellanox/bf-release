@@ -750,9 +750,7 @@ configure_grub()
 		sed -i -r -e "s/(password_pbkdf2 admin).*/\1 ${grub_admin_PASSWORD}/" /etc/grub.d/40_custom
 	fi
 
-	# Then, set boot arguments: Read current 'console' and 'earlycon'
-	# parameters, and append the root filesystem parameters.
-	bootarg="$(cat /proc/cmdline | sed 's/initrd=initramfs//;s/console=.*//')"
+	bootarg=""
 	redfish_osarg="$(bfcfg --dump-osarg 2> /dev/null)"
 	if [ -n "$redfish_osarg" ]; then
 		bootarg="$bootarg $redfish_osarg"
