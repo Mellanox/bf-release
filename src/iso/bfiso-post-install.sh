@@ -750,13 +750,25 @@ configure_grub()
 		sed -i -r -e "s/(password_pbkdf2 admin).*/\1 ${grub_admin_PASSWORD}/" /etc/grub.d/40_custom
 	fi
 
+	# Then, set boot arguments: Read current 'console' and 'earlycon'
+	# parameters, and append the root filesystem parameters.
+	bootarg="$(cat /proc/cmdline | sed 's/initrd=initramfs//;s/console=.*//')"
+	redfish_osarg="$(bfcfg --dump-osarg 2> /dev/null)"
+	if [ -n "$redfish_osarg" ]; then
+		bootarg="$bootarg $redfish_osarg"
+	fi
+
 	if (lscpu 2>&1 | grep -wq Grace); then
 		async_probe=""
 		if [ "${ENABLE_MLX5_ASYNC_PROBE}" = "yes" ]; then
 			async_probe=" driver_async_probe=mlx5_core"
 		fi
 		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg keep_bootcon earlycon modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 iommu.passthrough=1${async_probe}\"@" /etc/default/grub
-	elif (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
+	else
+		sed -i -e "s@GRUB_CMDLINE_LINUX=.*@GRUB_CMDLINE_LINUX=\"rw crashkernel=1024M $bootarg console=hvc0 console=ttyAMA0 earlycon=pl011,0x01000000 modprobe.blacklist=mlx5_core,mlx5_ib selinux=0 iommu.passthrough=1\"@" /etc/default/grub
+	fi
+
+	if (grep -q MLNXBF33 /sys/firmware/acpi/tables/SSDT*); then
 		# BlueField-3
 		sed -i -e "s/0x01000000/0x13010000/g" /etc/default/grub
 	fi
