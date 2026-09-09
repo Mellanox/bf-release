@@ -195,8 +195,109 @@ if [ $1 -eq 1 ]; then
 # during OS image build where lspci is not available.
 # tmfifo_net0 exists on BlueField-1/2/3; nodnic0 on BlueField-4; oob_net0 on all.
 
-# BlueField-1/2/3: tmfifo_net udev rule and ifcfg
+# BlueField-1/2/3: tmfifo_net udev rule
 install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
+
+%if 0%{?alinux}
+NM_CONN_DIR=/etc/NetworkManager/system-connections
+
+# BlueField-1/2/3: tmfifo_net0
+cat > ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection << EOF
+[connection]
+id=tmfifo_net0-static
+type=ethernet
+interface-name=tmfifo_net0
+
+[ipv4]
+address1=192.168.100.2/30,192.168.100.1
+dns=192.168.100.1;
+method=manual
+route-metric=1025
+
+[ipv6]
+addr-gen-mode=default
+method=disabled
+
+[proxy]
+EOF
+chmod 600 ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection
+
+# BlueField-4: nodnic0 (Host-to-Grace interface)
+cat > ${NM_CONN_DIR}/nodnic0-static.nmconnection << EOF
+[connection]
+id=nodnic0-static
+type=ethernet
+interface-name=nodnic0
+
+[ipv4]
+address1=192.168.100.2/30,192.168.100.1
+dns=192.168.100.1;
+method=manual
+route-metric=1025
+
+[ipv6]
+addr-gen-mode=default
+method=disabled
+
+[proxy]
+EOF
+chmod 600 ${NM_CONN_DIR}/nodnic0-static.nmconnection
+
+# BlueField-4: vlan4040 on oob_net0 for BMC communication
+cat > ${NM_CONN_DIR}/vlan4040.nmconnection << EOF
+[connection]
+id=vlan4040
+type=vlan
+interface-name=vlan4040
+
+[vlan]
+id=4040
+parent=oob_net0
+
+[ipv4]
+address1=192.168.240.2/29
+method=manual
+
+[ipv6]
+addr-gen-mode=default
+method=disabled
+
+[proxy]
+EOF
+chmod 600 ${NM_CONN_DIR}/vlan4040.nmconnection
+
+# oob_net0
+cat > ${NM_CONN_DIR}/oob_net0-dhcp.nmconnection << EOF
+[connection]
+id=oob_net0-dhcp
+type=ethernet
+interface-name=oob_net0
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=disabled
+
+[proxy]
+EOF
+chmod 600 ${NM_CONN_DIR}/oob_net0-dhcp.nmconnection
+
+# On real hardware, remove configs irrelevant to the detected BF version
+if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
+    # BlueField-1/2/3: remove BF4-only configs
+    /bin/rm -f ${NM_CONN_DIR}/nodnic0-static.nmconnection
+    /bin/rm -f ${NM_CONN_DIR}/vlan4040.nmconnection
+elif (lspci -nD 2> /dev/null | grep -q 15b3:); then
+    # BlueField-4: remove BF1/2/3-only configs
+    /bin/rm -f /lib/udev/rules.d/91-tmfifo_net.rules
+    /bin/rm -f ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection
+fi
+
+%else
+
+# BlueField-1/2/3: tmfifo_net0
 cat > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -238,6 +339,17 @@ IPADDR=192.168.240.2
 PREFIX=29
 EOF
 
+# oob_net0
+cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
+NAME="oob_net0"
+DEVICE="oob_net0"
+NM_CONTROLLED="yes"
+PEERDNS="yes"
+ONBOOT="yes"
+BOOTPROTO="dhcp"
+TYPE=Ethernet
+EOF
+
 # On real hardware, remove configs irrelevant to the detected BF version
 if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
     # BlueField-1/2/3: remove BF4-only configs
@@ -249,15 +361,7 @@ elif (lspci -nD 2> /dev/null | grep -q 15b3:); then
     /bin/rm -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0
 fi
 
-cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
-NAME="oob_net0"
-DEVICE="oob_net0"
-NM_CONTROLLED="yes"
-PEERDNS="yes"
-ONBOOT="yes"
-BOOTPROTO="dhcp"
-TYPE=Ethernet
-EOF
+%endif
 
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
