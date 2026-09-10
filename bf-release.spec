@@ -187,21 +187,24 @@ install -m 0755	src/oob-link-recover.sh      %{buildroot}%{_sbindir}/oob-link-re
 install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system/oob-link-recover.service
 
 %post
-# Install and not Upgrade
-if [ $1 -eq 1 ]; then
-
 # Network interface configuration
-# Install all configs unconditionally — the package may be preinstalled
-# during OS image build where lspci is not available.
+# Runs on both install ($1=1) and upgrade ($1=2).
+# On upgrade from older bf-release that shipped these files in %%files,
+# RPM deletes the old-version files during cleanup — we must recreate them.
+# Each file is created only if it does not already exist, to avoid
+# clobbering user customizations.
 # tmfifo_net0 exists on BlueField-1/2/3; nodnic0 on BlueField-4; oob_net0 on all.
 
 # BlueField-1/2/3: tmfifo_net udev rule
-install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
+if [ ! -f /lib/udev/rules.d/91-tmfifo_net.rules ]; then
+    install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
+fi
 
 %if 0%{?alinux}
 NM_CONN_DIR=/etc/NetworkManager/system-connections
 
 # BlueField-1/2/3: tmfifo_net0
+if [ ! -f ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection ]; then
 cat > ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection << EOF
 [connection]
 id=tmfifo_net0-static
@@ -221,8 +224,10 @@ method=disabled
 [proxy]
 EOF
 chmod 600 ${NM_CONN_DIR}/tmfifo_net0-static.nmconnection
+fi
 
 # BlueField-4: nodnic0 (Host-to-Grace interface)
+if [ ! -f ${NM_CONN_DIR}/nodnic0-static.nmconnection ]; then
 cat > ${NM_CONN_DIR}/nodnic0-static.nmconnection << EOF
 [connection]
 id=nodnic0-static
@@ -242,8 +247,10 @@ method=disabled
 [proxy]
 EOF
 chmod 600 ${NM_CONN_DIR}/nodnic0-static.nmconnection
+fi
 
 # BlueField-4: vlan4040 on oob_net0 for BMC communication
+if [ ! -f ${NM_CONN_DIR}/vlan4040.nmconnection ]; then
 cat > ${NM_CONN_DIR}/vlan4040.nmconnection << EOF
 [connection]
 id=vlan4040
@@ -265,8 +272,10 @@ method=disabled
 [proxy]
 EOF
 chmod 600 ${NM_CONN_DIR}/vlan4040.nmconnection
+fi
 
 # oob_net0
+if [ ! -f ${NM_CONN_DIR}/oob_net0-dhcp.nmconnection ]; then
 cat > ${NM_CONN_DIR}/oob_net0-dhcp.nmconnection << EOF
 [connection]
 id=oob_net0-dhcp
@@ -283,6 +292,7 @@ method=disabled
 [proxy]
 EOF
 chmod 600 ${NM_CONN_DIR}/oob_net0-dhcp.nmconnection
+fi
 
 # On real hardware, remove configs irrelevant to the detected BF version
 if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
@@ -306,6 +316,7 @@ EOF
 %else
 
 # BlueField-1/2/3: tmfifo_net0
+if [ ! -f /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 ]; then
 cat > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -318,8 +329,10 @@ ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
+fi
 
 # BlueField-4: nodnic0 (Host-to-Grace interface)
+if [ ! -f /etc/sysconfig/network-scripts/ifcfg-nodnic0 ]; then
 cat > /etc/sysconfig/network-scripts/ifcfg-nodnic0 << EOF
 TYPE=Ethernet
 BOOTPROTO=none
@@ -332,8 +345,10 @@ ONBOOT=yes
 GATEWAY=192.168.100.1
 IPV4_ROUTE_METRIC=1025
 EOF
+fi
 
 # BlueField-4: vlan4040 on oob_net0 for BMC communication
+if [ ! -f /etc/sysconfig/network-scripts/ifcfg-vlan4040 ]; then
 cat > /etc/sysconfig/network-scripts/ifcfg-vlan4040 << EOF
 VLAN=yes
 VLAN_ID=4040
@@ -346,8 +361,10 @@ BOOTPROTO=none
 IPADDR=192.168.240.2
 PREFIX=29
 EOF
+fi
 
 # oob_net0
+if [ ! -f /etc/sysconfig/network-scripts/ifcfg-oob_net0 ]; then
 cat > /etc/sysconfig/network-scripts/ifcfg-oob_net0 << EOF
 NAME="oob_net0"
 DEVICE="oob_net0"
@@ -357,6 +374,7 @@ ONBOOT="yes"
 BOOTPROTO="dhcp"
 TYPE=Ethernet
 EOF
+fi
 
 # On real hardware, remove configs irrelevant to the detected BF version
 if (lspci -nD 2> /dev/null | grep -q 15b3:a2d[26c]); then
@@ -370,6 +388,9 @@ elif (lspci -nD 2> /dev/null | grep -q 15b3:); then
 fi
 
 %endif
+
+# Install and not Upgrade
+if [ $1 -eq 1 ]; then
 
 if (grep -q OFED-internal /usr/bin/ofed_info > /dev/null 2>&1); then
     ofed_version=`ofed_info -n`
