@@ -426,10 +426,6 @@ if [ -e /etc/default/grub ]; then
 
 	# Use console
 	sed -i 's/.*GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
-
-	if ! grep -q 'GRUB_PRELOAD_MODULES.*tpm' /etc/default/grub; then
-		echo 'GRUB_PRELOAD_MODULES="$GRUB_PRELOAD_MODULES tpm"' >> /etc/default/grub
-	fi
 fi
 
 # Linux: use console and set a sensible date on boot (the later is important
@@ -518,6 +514,14 @@ disable_service opensmd.service
 disable_service strongswan-starter.service
 
 fi # END: Install and not upgrade
+
+# Preload the TPM grub module on both install and upgrade so that
+# systems upgrading from an older bf-release also pick it up.
+if [ -e /etc/default/grub ]; then
+    if ! grep -q 'GRUB_PRELOAD_MODULES.*tpm' /etc/default/grub; then
+        echo 'GRUB_PRELOAD_MODULES="$GRUB_PRELOAD_MODULES tpm"' >> /etc/default/grub
+    fi
+fi
 
 # RHCOS owns these paths via Ignition / MachineConfigOperator;
 # remove them on every install/upgrade so we don't conflict.
