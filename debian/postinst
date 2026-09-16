@@ -80,6 +80,10 @@ if [ "$1" = "configure" ]; then
 				-e 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=""/' \
 				/etc/default/grub
 
+			if ! grep -q 'GRUB_PRELOAD_MODULES.*tpm' /etc/default/grub; then
+				echo 'GRUB_PRELOAD_MODULES="$GRUB_PRELOAD_MODULES tpm"' >> /etc/default/grub
+			fi
+
 			if [ -d /etc/default/grub.d ]; then
 				echo "GRUB_DISABLE_OS_PROBER=true" > /etc/default/grub.d/10-disableos-prober.cfg
 			fi
