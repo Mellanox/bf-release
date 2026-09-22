@@ -1,0 +1,35 @@
+[Unit]
+Description=Recover kubelet static pods stuck on stale hugepages capacity (RM-5266141)
+After=kubelet.service
+# Populated only once a hugepage-backed app (e.g. SNAP) is configured, so this
+# unit never runs on a DPU that does not use hugepages at all. Safe as a gate:
+# this holds persistent admin-configured state that survives reboots, not
+# volatile per-boot state that would still be missing when the condition runs.
+ConditionDirectoryNotEmpty=/etc/mellanox/hugepages.d
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/kubelet-hugepages-recovery.sh
+# Oneshot units are still bound by the start timeout (90s by default), so the
+# script would otherwise be killed mid-poll and never reach the restart. The
+# budget below is the script's worst case for a single hugepage pod, counting
+# the external-command timeouts and not just the sleeps, in seconds:
+#
+#   500  detection loop: 20 attempts x (2 x 5s crictl/journalctl timeout
+#                        + 15s sleep)
+#    60  systemctl restart kubelet, which is not instant on a loaded DPU
+#    15  settle sleep between the restart and the verification
+#    30  verification: 3 attempts x (5s crictl timeout + 5s sleep)
+#   ---
+#   605
+#
+# Every configured hugepage pod is probed once per detection attempt, so a box
+# running several of them scales the 500s term; that, plus the fact that a
+# timeout here silently defeats the recovery, is why this rounds well clear of
+# 605 rather than sitting just above it.
+TimeoutStartSec=900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

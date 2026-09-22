@@ -186,6 +186,14 @@ install -d %{buildroot}/usr/lib/systemd/system
 install -m 0755	src/oob-link-recover.sh      %{buildroot}%{_sbindir}/oob-link-recover.sh
 install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system/oob-link-recover.service
 
+# kubelet hugepages admission recovery (RM-5266141) — Oracle Linux only, where
+# the slower RDMA module load loses the boot-time race against DOCA hugepage
+# provisioning.
+%if 0%{?oraclelinux}
+install -m 0755	src/kubelet-hugepages-recovery.sh      %{buildroot}%{_sbindir}/kubelet-hugepages-recovery.sh
+install -m 0644	src/kubelet-hugepages-recovery.service %{buildroot}/usr/lib/systemd/system/kubelet-hugepages-recovery.service
+%endif
+
 %post
 # Install and not Upgrade
 if [ $1 -eq 1 ]; then
@@ -372,6 +380,8 @@ enable_service mlx_ipmid.service
 enable_service set_emu_param.service
 enable_service kdump.service
 enable_service oob-link-recover.service
+# Packaged on Oracle Linux only; a no-op on builds without the unit.
+enable_service kubelet-hugepages-recovery.service
 
 disable_service openvswitch-ipsec
 disable_service ibacm.service
@@ -464,5 +474,10 @@ fi
 
 %{_sbindir}/oob-link-recover.sh
 /usr/lib/systemd/system/oob-link-recover.service
+
+%if 0%{?oraclelinux}
+%{_sbindir}/kubelet-hugepages-recovery.sh
+/usr/lib/systemd/system/kubelet-hugepages-recovery.service
+%endif
 
 %changelog
