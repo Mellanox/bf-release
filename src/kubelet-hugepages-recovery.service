@@ -1,6 +1,12 @@
 [Unit]
 Description=Recover kubelet static pods stuck on stale hugepages capacity (RM-5266141)
 After=kubelet.service
+# This package ships kubelet.service unconditionally, so its presence alone
+# does not prove kubelet is what is actually running SNAP here (podman or
+# another mechanism is possible) - this is a cheap first-pass gate, not the
+# real one. The script itself checks "systemctl is-active kubelet.service"
+# before doing anything, which is what actually decides that.
+ConditionPathExists=/usr/lib/systemd/system/kubelet.service
 # Populated only once a hugepage-backed app (e.g. SNAP) is configured, so this
 # unit never runs on a DPU that does not use hugepages at all. Safe as a gate:
 # this holds persistent admin-configured state that survives reboots, not

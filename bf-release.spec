@@ -192,6 +192,12 @@ install -m 0644	src/oob-link-recover.service %{buildroot}/usr/lib/systemd/system
 %if 0%{?oraclelinux}
 install -m 0755	src/kubelet-hugepages-recovery.sh      %{buildroot}%{_sbindir}/kubelet-hugepages-recovery.sh
 install -m 0644	src/kubelet-hugepages-recovery.service %{buildroot}/usr/lib/systemd/system/kubelet-hugepages-recovery.service
+
+# Order kubelet after mlnx-tools' hugepage-ready signal (RM-5266141, producer
+# side in mlnx-tools#163) — narrows the same boot-time race this recovery
+# unit exists to catch, instead of relying on recovery alone.
+install -d %{buildroot}/usr/lib/systemd/system/kubelet.service.d
+install -m 0644	src/91-kubelet-after-hugepages.conf %{buildroot}/usr/lib/systemd/system/kubelet.service.d/91-kubelet-after-hugepages.conf
 %endif
 
 %post
@@ -478,6 +484,7 @@ fi
 %if 0%{?oraclelinux}
 %{_sbindir}/kubelet-hugepages-recovery.sh
 /usr/lib/systemd/system/kubelet-hugepages-recovery.service
+/usr/lib/systemd/system/kubelet.service.d/91-kubelet-after-hugepages.conf
 %endif
 
 %changelog

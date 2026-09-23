@@ -152,6 +152,17 @@ if [ "${#pods[@]}" -eq 0 ]; then
 	exit 0
 fi
 
+# SNAP's orchestration is not guaranteed to be kubelet (podman or another
+# mechanism is plausible on future images). A stale manifest can also outlive
+# a migration away from kubelet. If kubelet.service is not actually active,
+# it is not what starts this pod, so there is nothing here for us to recover
+# - exit before the poll loop rather than waiting out a race that cannot be
+# the one this script targets.
+if ! systemctl is-active --quiet kubelet.service; then
+	log "kubelet.service is not active - not a kubelet deployment, nothing to recover"
+	exit 0
+fi
+
 # Wait out the boot-time window: hugepage provisioning and the first admission
 # attempt may still be racing. Only a failure that is still present after the
 # full grace window (MAX_ATTEMPTS x SLEEP_SECS = 5 minutes) is the stale
