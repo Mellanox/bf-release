@@ -1,0 +1,7 @@
+# BlueField-4: VLAN 4040 on oob_net0
+[NetDev]
+Name=vlan4040
+Kind=vlan
+
+[VLAN]
+Id=4040

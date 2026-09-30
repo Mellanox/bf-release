@@ -99,6 +99,15 @@ endif
 	install -m 0644 src/40-mlnx.conf		debian/$(pname)/etc/NetworkManager/conf.d/
 	install -m 0644 src/45-mlnx-dns.conf	debian/$(pname)/etc/NetworkManager/conf.d/
 
+	# systemd-networkd configuration
+	dh_installdirs -p$(pname)  usr/lib/systemd/network
+	install -m 0644 src/networkd/01-nodnic.network     debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/02-oob.network        debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/03-mgmt.network       debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/04-vlan4040.netdev    debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/04-vlan4040.network   debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/05-mlnx-dp.network    debian/$(pname)/usr/lib/systemd/network/
+
 	dh_installdirs -p$(pname)  etc/lldpd.d
 	install -m 0644 src/lldpd/lldp-interfaces.conf debian/$(pname)/etc/lldpd.d/
 

@@ -1,0 +1,14 @@
+# BlueField: all mlx5 data-plane interfaces (DHCP with DP vendor class)
+[Match]
+Driver=mlx5_core
+Type=ether
+
+[Network]
+DHCP=yes
+LinkLocalAddressing=ipv6
+
+[DHCPv4]
+VendorClassIdentifier=NVIDIA/BF/DP
+
+[DHCPv6]
+SendVendorClass=5703:NVIDIA/BF/DP

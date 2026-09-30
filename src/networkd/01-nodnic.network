@@ -1,0 +1,13 @@
+# BlueField-4: nodnic0 host-to-Grace static link
+[Match]
+Name=nodnic0
+
+[Network]
+Address=192.168.100.2/30
+DNS=192.168.100.1
+LinkLocalAddressing=no
+
+[Route]
+Destination=192.168.240.0/29
+Gateway=192.168.100.1
+Metric=1025

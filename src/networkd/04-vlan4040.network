@@ -1,0 +1,7 @@
+# BlueField-4: VLAN 4040 static configuration
+[Match]
+Name=vlan4040
+
+[Network]
+Address=192.168.240.2/29
+LinkLocalAddressing=no
