@@ -2,6 +2,7 @@
 [Match]
 Driver=mlx5_core
 Type=ether
+Property=DEVPATH=*mlx5_core.sf.*
 
 [Network]
 DHCP=yes
