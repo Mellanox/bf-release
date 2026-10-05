@@ -3,13 +3,5 @@
 Name=mgmt
 
 [Network]
-DHCP=yes
-LinkLocalAddressing=ipv6
-
-[DHCPv4]
-VendorClassIdentifier=NVIDIA/BF/OOB
-SendHostname=false
-SendOption=12:string:localhost.localdomain
-
-[DHCPv6]
-SendVendorClass=5703:NVIDIA/BF/OOB
+Address=127.0.0.1/8
+Address=::1/128
