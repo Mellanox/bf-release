@@ -284,10 +284,12 @@ interface-name=oob_net0
 
 [ipv4]
 method=auto
+route-metric=50
 
 [ipv6]
 addr-gen-mode=default
 method=disabled
+route-metric=50
 
 [proxy]
 EOF
@@ -373,6 +375,7 @@ PEERDNS="yes"
 ONBOOT="yes"
 BOOTPROTO="dhcp"
 TYPE=Ethernet
+IPV4_ROUTE_METRIC=50
 EOF
 fi
 

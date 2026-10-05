@@ -11,6 +11,8 @@ VLAN=vlan4040
 VendorClassIdentifier=NVIDIA/BF/OOB
 SendHostname=false
 SendOption=12:string:localhost.localdomain
+RouteMetric=50
 
 [DHCPv6]
 SendVendorClass=5703:NVIDIA/BF/OOB
+RouteMetric=50
