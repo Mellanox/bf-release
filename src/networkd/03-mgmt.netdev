@@ -1,0 +1,6 @@
+[NetDev]
+Name=mgmt
+Kind=vrf
+
+[VRF]
+TableId=1001

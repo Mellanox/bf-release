@@ -103,6 +103,7 @@ endif
 	dh_installdirs -p$(pname)  usr/lib/systemd/network
 	install -m 0644 src/networkd/01-nodnic.network     debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/02-oob.network        debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/03-mgmt.netdev        debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/03-mgmt.network       debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/04-vlan4040.netdev    debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/04-vlan4040.network   debian/$(pname)/usr/lib/systemd/network/

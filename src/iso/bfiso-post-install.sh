@@ -709,6 +709,12 @@ EOF
 	# post-install reboot they would linger next to the SFs that install.sh creates.
 	: > /etc/mellanox/mlnx-sf.conf
 
+	# Place oob_net0 into the mgmt VRF so OOB management traffic is
+	# isolated from the data-plane.
+	if [ -f /usr/lib/systemd/network/02-oob.network ]; then
+		sed -i '/^\[Network\]/a VRF=mgmt' /usr/lib/systemd/network/02-oob.network
+	fi
+
 	# Run provisioning-install.sh in the chroot now so the post-install power cycle applies
 	# the reboot-requiring configuration. provisioning-done records success;
 	# without it the first-boot install.sh aborts.
