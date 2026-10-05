@@ -16,3 +16,6 @@ RouteMetric=50
 [DHCPv6]
 SendVendorClass=5703:NVIDIA/BF/OOB
 RouteMetric=50
+
+[DHCP]
+UseDomains=true
