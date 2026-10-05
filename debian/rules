@@ -101,12 +101,13 @@ endif
 
 	# systemd-networkd configuration
 	dh_installdirs -p$(pname)  usr/lib/systemd/network
+	dh_installdirs -p$(pname)  usr/lib/systemd/network/10-netplan-oob_net0.network.d
 	install -m 0644 src/networkd/01-nodnic.network     debian/$(pname)/usr/lib/systemd/network/
-	install -m 0644 src/networkd/02-oob.network        debian/$(pname)/usr/lib/systemd/network/
-	install -m 0644 src/networkd/03-mgmt.network       debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/04-vlan4040.netdev    debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/04-vlan4040.network   debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/05-mlnx-dp.network    debian/$(pname)/usr/lib/systemd/network/
+	install -m 0644 src/networkd/10-netplan-oob_net0.network.d/50-bluefield-oob.conf \
+		debian/$(pname)/usr/lib/systemd/network/10-netplan-oob_net0.network.d/
 
 	dh_installdirs -p$(pname)  etc/lldpd.d
 	install -m 0644 src/lldpd/lldp-interfaces.conf debian/$(pname)/etc/lldpd.d/

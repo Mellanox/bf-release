@@ -1,7 +1,13 @@
-# BlueField: all mlx5 data-plane interfaces (DHCP with DP vendor class)
+# BlueField: data-plane SF interfaces (DHCP with DP vendor class)
+#
+# Only the default SF netdevs that the installers configure for DHCP:
+#   BF2/BF3: enp<bus>s<slot>f<func>s<sf>
+#   BF4:     enP<domain>p<bus>s<slot>f<func>S<sf>
+# Uplinks, representors, OVS ports and HBN-managed SFs are not matched.
 [Match]
 Driver=mlx5_core
 Type=ether
+Name=enp*s*f*s* enP*p*s*f*S*
 
 [Network]
 DHCP=yes
