@@ -571,6 +571,21 @@ fi
 /lib/udev/rules.d/*
 %{_datadir}/%{name}/91-tmfifo_net.rules
 %dir /etc/sysconfig/network-scripts
+# Ghost entries: these files are created in %%post (BF-version-dependent)
+# but were shipped in %%files by older bf-release versions. Marking them
+# %%ghost prevents RPM from deleting them during upgrade cleanup.
+%ghost /lib/udev/rules.d/91-tmfifo_net.rules
+%if 0%{?alinux}
+%ghost /etc/NetworkManager/system-connections/tmfifo_net0-static.nmconnection
+%ghost /etc/NetworkManager/system-connections/oob_net0-dhcp.nmconnection
+%ghost /etc/NetworkManager/system-connections/nodnic0-static.nmconnection
+%ghost /etc/NetworkManager/system-connections/vlan4040.nmconnection
+%else
+%ghost /etc/sysconfig/network-scripts/ifcfg-tmfifo_net0
+%ghost /etc/sysconfig/network-scripts/ifcfg-oob_net0
+%ghost /etc/sysconfig/network-scripts/ifcfg-nodnic0
+%ghost /etc/sysconfig/network-scripts/ifcfg-vlan4040
+%endif
 /etc/systemd/system/NetworkManager-wait-online.service.d/override.conf
 /etc/systemd/system/network.service.d/override.conf
 %if ! 0%{?oraclelinux}
