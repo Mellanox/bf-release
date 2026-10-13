@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+CARRIER_TIMEOUT=10 # Seconds allowed for each carrier wait.
+
 IF=oob_net0
 CARRIER_FILE="/sys/class/net/${IF}/carrier"
 
@@ -12,6 +14,33 @@ is_bf4()
         fi
 
         return 1
+}
+
+wait_for_carrier()
+{
+    # Check immediately, then poll for up to the requested number of seconds.
+    # A zero timeout performs one check without sleeping.
+    wait_remaining=${1:-$CARRIER_TIMEOUT}
+
+    while :; do
+        CARRIER="$(cat "$CARRIER_FILE" 2>/dev/null)" || {
+            echo "${IF}: cannot read carrier state" >&2
+            exit 1
+        }
+
+        case "$CARRIER" in
+            1) return 0 ;;
+            0) ;;
+            *)
+                echo "${IF}: unexpected carrier state: ${CARRIER}" >&2
+                exit 1
+                ;;
+        esac
+
+        [ "$wait_remaining" -gt 0 ] || return 1
+        sleep 1
+        wait_remaining=$((wait_remaining - 1))
+    done
 }
 
 # The recovery is needed on the BlueField-4 OOB port only; leave
@@ -38,17 +67,37 @@ ethtool -K "$IF" sg off || {
     true
 }
 
-CARRIER="$(cat "$CARRIER_FILE" 2>/dev/null)" || {
-    echo "${IF}: cannot read carrier state, exiting"
+# Allow normal startup/link negotiation to complete before recovery.
+if wait_for_carrier "$CARRIER_TIMEOUT"; then
+    echo "${IF}: carrier is up; no recovery needed"
     exit 0
-}
+fi
+
+# Timeout leaves CARRIER=0.
 echo "${IF} carrier state: ${CARRIER}"
 
 if [ "$CARRIER" = "0" ]; then
-    echo "${IF}: carrier is down, cycling interface"
+    echo "${IF}: restarting autonegotiation"
+
+    # Handle unsupported or failed renegotiation without triggering set -e.
+    if ethtool -r "$IF"; then
+        if wait_for_carrier "$CARRIER_TIMEOUT"; then
+            echo "${IF}: carrier restored after autonegotiation"
+            exit 0
+        fi
+        echo "${IF}: autonegotiation did not restore carrier; cycling interface"
+    else
+        echo "${IF}: cannot restart autonegotiation; cycling interface"
+    fi
+
+    # Carrier may have returned while deciding to use the fallback.
+    if wait_for_carrier 0; then
+        echo "${IF}: carrier is now up; skipping interface cycle"
+        exit 0
+    fi
 
     ip link set dev "$IF" down || {
-        echo "${IF}: failed to bring interface down" >&2
+        echo "${IF}: failed to bring interface down; still attempting to bring it up" >&2
         true
     }
 
@@ -56,20 +105,15 @@ if [ "$CARRIER" = "0" ]; then
 
     ip link set dev "$IF" up || {
         echo "${IF}: failed to bring interface up" >&2
-        true
+        exit 1
     }
 
-    # Carrier takes a few seconds to return after link-up (autoneg);
-    # poll briefly so the completion log reflects the real outcome.
-    CARRIER=unknown
-    for _ in 1 2 3 4 5; do
-        sleep 1
-        CARRIER="$(cat "$CARRIER_FILE" 2>/dev/null || echo unknown)"
-        if [ "$CARRIER" = "1" ]; then
-            break
-        fi
-    done
-    echo "${IF}: recovery cycle completed, carrier now: ${CARRIER}"
+    if wait_for_carrier "$CARRIER_TIMEOUT"; then
+        echo "${IF}: carrier restored after interface cycle"
+    else
+        echo "${IF}: recovery unsuccessful, carrier: ${CARRIER}" >&2
+        exit 1
+    fi
 else
     echo "${IF}: carrier is up, nothing to do"
 fi
