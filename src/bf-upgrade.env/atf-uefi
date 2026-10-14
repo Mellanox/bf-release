@@ -50,15 +50,24 @@ parse_bfver_output()
 }
 
 # Return 0 if a capsule update is already pending in OsIndications
-# (EFI_OS_INDICATIONS_FILE_CAPSULE_DELIVERY_SUPPORTED bit set by bfrec)
+# (EFI_OS_INDICATIONS_FILE_CAPSULE_DELIVERY_SUPPORTED bit set by bfrec).
+# Absent variable: not pending. Unreadable or truncated variable: treated
+# as pending, so the capsule is staged (fail safe).
 atf_uefi_capsule_pending()
 {
 	local os_var=/sys/firmware/efi/efivars/OsIndications-8be4df61-93ca-11d2-aa0d-00e098032b8c
 	local val
 
 	[ -e "$os_var" ] || return 1
-	val=$(od -An -tu1 -j4 -N1 "$os_var" 2>/dev/null | tr -d '[:space:]')
-	[ -n "$val" ] || return 1
+	if ! val=$(od -An -tu1 -j4 -N1 "$os_var" 2>/dev/null); then
+		ilog "Cannot read $os_var. Assuming a capsule update is pending."
+		return 0
+	fi
+	val=$(echo "$val" | tr -d '[:space:]')
+	if [[ ! $val =~ ^[0-9]+$ ]]; then
+		ilog "Cannot parse $os_var. Assuming a capsule update is pending."
+		return 0
+	fi
 	[ $(( val & 4 )) -ne 0 ]
 }
 
@@ -113,7 +122,8 @@ is_atf_uefi_update_required()
 		return 0
 	fi
 
-	if [[ -n "$cap_atf_type" && -n "$run_atf_type" && "$cap_atf_type" != "$run_atf_type" ]]; then
+	if [ "$cap_atf_type" != "$run_atf_type" ]; then
+		ilog "ATF build type differs (provided: '${cap_atf_type}', installed: '${run_atf_type}'). Proceeding with the update."
 		return 0
 	fi
 
