@@ -95,12 +95,39 @@ get_mcqi_version()
 	parse_register_version "$output" version_string
 }
 
+# Normalise a firmware version string for comparison only.
+# Strips surrounding whitespace and a leading "vX.Y(<tag>):" ATF prefix, so
+# that running "v2.2(release):4.17.0-3-gd8c6958be" matches pending
+# "4.17.0-3-gd8c6958be".
+normalize_fw_version()
+{
+	local v="$1"
+	local re='^v[0-9]+(\.[0-9]+)*\([^)]*\):[[:space:]]*(.*)$'
+
+	v="${v#"${v%%[![:space:]]*}"}"
+	v="${v%"${v##*[![:space:]]}"}"
+	if [[ $v =~ $re ]]; then
+		v="${BASH_REMATCH[2]}"
+	fi
+	echo "$v"
+}
+
+# Return 0 if a pending version is set and differs from the running one
+is_pending_different()
+{
+	local running="$1"
+	local pending="$2"
+
+	[ -n "$pending" ] && \
+		[ "$(normalize_fw_version "$pending")" != "$(normalize_fw_version "$running")" ]
+}
+
 format_with_pending()
 {
 	local running="$1"
 	local pending="$2"
 	
-	if [ -n "$pending" ] && [ "$pending" != "$running" ]; then
+	if is_pending_different "$running" "$pending"; then
 		echo "${running} (pending: ${pending})"
 	else
 		echo "$running"
@@ -115,7 +142,7 @@ print_fw_line()
 	local pending="$3"
 	
 	echo "- ${label}: ${running}"
-	if [ -n "$pending" ] && [ "$pending" != "$running" ]; then
+	if is_pending_different "$running" "$pending"; then
 		echo "- ${label}: ${pending} (pending)"
 	fi
 }

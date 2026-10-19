@@ -232,6 +232,7 @@ set_upgrade_progress 0 0
 # IS_BUNDLE is set to 1 if the BFB is a bf-bundle or bf-fwbundle (non-flat) BFB
 IS_BUNDLE=0
 export UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
+export FORCE_ATF_UEFI_UPDATE=${FORCE_ATF_UEFI_UPDATE:-"no"}
 export UPDATE_DPU_OS=${UPDATE_DPU_OS:-"no"}
 export UPDATE_BMC_FW=${UPDATE_BMC_FW:-"yes"}
 export UPDATE_CEC_FW=${UPDATE_CEC_FW:-"yes"}
