@@ -29,7 +29,9 @@
 # Usage: btrfs-rollback.sh [--delete-failed]
 #
 # Options:
-#   --delete-failed   Delete the failed @ snapshot after rollback
+#   --delete-failed   Delete the failed @ snapshot after rollback. If the
+#                     failed snapshot is the running root, it is renamed to
+#                     @_failed instead and must be deleted after reboot.
 #
 # The rollback takes effect after reboot (or immediately if run before reboot).
 
@@ -38,8 +40,34 @@ set -e
 PROG=$(basename "$0")
 DELETE_FAILED=0
 
-if [ "$1" == "--delete-failed" ]; then
-	DELETE_FAILED=1
+usage()
+{
+	echo "Usage: $PROG [--delete-failed]"
+	echo ""
+	echo "  --delete-failed   Delete the failed @ snapshot after rollback"
+	echo ""
+	echo "Restores @_old as the default subvolume. Reboot to activate."
+	exit "${1:-1}"
+}
+
+case "$1" in
+	"")
+		;;
+	--delete-failed)
+		DELETE_FAILED=1
+		;;
+	-h|--help)
+		usage 0
+		;;
+	*)
+		echo "ERROR: Unknown option: $1" >&2
+		usage
+		;;
+esac
+
+if [ $# -gt 1 ]; then
+	echo "ERROR: Too many arguments" >&2
+	usage
 fi
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -61,6 +89,9 @@ if [ "$ROOT_FSTYPE" != "btrfs" ]; then
 	exit 1
 fi
 
+# Subvolume ID of the running root (used to avoid deleting it under ourselves)
+RUNNING_SUBVOL_ID=$(findmnt -n -o OPTIONS / | tr ',' '\n' | sed -n 's/^subvolid=//p')
+
 WORKDIR=$(mktemp -d /tmp/btrfs-rollback.XXXXXX)
 trap 'umount "$WORKDIR" 2>/dev/null; rmdir "$WORKDIR" 2>/dev/null' EXIT
 
@@ -72,29 +103,35 @@ if [ ! -d "$WORKDIR/@_old" ]; then
 	exit 1
 fi
 
-# Optionally delete the failed @ snapshot
-if [ $DELETE_FAILED -eq 1 ] && [ -d "$WORKDIR/@" ]; then
-	echo "==> Deleting failed @ snapshot"
-	btrfs subvolume delete "$WORKDIR/@"
-fi
+# Set @_old as the default subvolume FIRST.  This must happen before any
+# delete of @, because btrfs-progs refuses to delete the default subvolume.
+# The default is tracked by ID, so the renames below do not affect it.
+SUBVOL_ID=$(btrfs subvolume show "$WORKDIR/@_old" | grep "Subvolume ID" | awk '{print $3}')
+echo "==> Setting default subvolume to @_old (id=$SUBVOL_ID)"
+btrfs subvolume set-default "$SUBVOL_ID" "$WORKDIR"
 
-# If @ still exists (no --delete-failed), rename it to @_failed
+# Handle the current (failed) @ subvolume
+FAILED_KEPT=0
 if [ -d "$WORKDIR/@" ]; then
-	if [ -d "$WORKDIR/@_failed" ]; then
-		btrfs subvolume delete "$WORKDIR/@_failed"
+	FAILED_ID=$(btrfs subvolume show "$WORKDIR/@" | grep "Subvolume ID" | awk '{print $3}')
+	if [ $DELETE_FAILED -eq 1 ] && [ "$FAILED_ID" != "$RUNNING_SUBVOL_ID" ]; then
+		echo "==> Deleting failed @ snapshot"
+		btrfs subvolume delete "$WORKDIR/@"
+	else
+		if [ -d "$WORKDIR/@_failed" ]; then
+			btrfs subvolume delete "$WORKDIR/@_failed"
+		fi
+		echo "==> Renaming current @ to @_failed"
+		mv "$WORKDIR/@" "$WORKDIR/@_failed"
+		if [ $DELETE_FAILED -eq 1 ]; then
+			FAILED_KEPT=1
+		fi
 	fi
-	echo "==> Renaming current @ to @_failed"
-	mv "$WORKDIR/@" "$WORKDIR/@_failed"
 fi
 
 # Restore @_old as @
 echo "==> Renaming @_old to @"
 mv "$WORKDIR/@_old" "$WORKDIR/@"
-
-# Set restored @ as default subvolume
-SUBVOL_ID=$(btrfs subvolume show "$WORKDIR/@" | grep "Subvolume ID" | awk '{print $3}')
-echo "==> Setting default subvolume to @ (id=$SUBVOL_ID)"
-btrfs subvolume set-default "$SUBVOL_ID" "$WORKDIR"
 
 umount "$WORKDIR"
 rmdir "$WORKDIR"
@@ -103,3 +140,10 @@ trap - EXIT
 echo ""
 echo "SUCCESS: Rolled back to previous @ subvolume."
 echo "  - Reboot to activate."
+if [ $FAILED_KEPT -eq 1 ]; then
+	echo "  - The failed update is the running root, so it was renamed to"
+	echo "    @_failed instead of deleted. After reboot, delete it with:"
+	echo "      mount -o subvolid=5 $ROOT_DEV /mnt"
+	echo "      btrfs subvolume delete /mnt/@_failed"
+	echo "      umount /mnt"
+fi
