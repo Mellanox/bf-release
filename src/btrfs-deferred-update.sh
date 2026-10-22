@@ -48,12 +48,47 @@ usage()
 	echo ""
 	echo "The update takes effect after reboot."
 	echo "Use btrfs-rollback.sh to revert before or after reboot."
-	exit 1
+	exit "${1:-1}"
 }
 
+# Validate arguments before touching the filesystem, so that a bad or
+# help-only invocation never creates an @_new snapshot.
 if [ $# -eq 0 ]; then
 	usage
 fi
+
+MODE=deb
+case "$1" in
+	-h|--help)
+		usage 0
+		;;
+	--upgrade)
+		MODE=upgrade
+		if [ $# -ne 1 ]; then
+			echo "ERROR: --upgrade does not take arguments" >&2
+			usage
+		fi
+		;;
+	--apt)
+		MODE=apt
+		if [ $# -lt 2 ]; then
+			echo "ERROR: --apt requires at least one package name" >&2
+			usage
+		fi
+		;;
+	-*)
+		echo "ERROR: Unknown option: $1" >&2
+		usage
+		;;
+	*)
+		for deb in "$@"; do
+			if [ ! -f "$deb" ]; then
+				echo "ERROR: File not found: $deb" >&2
+				exit 1
+			fi
+		done
+		;;
+esac
 
 if [ "$(id -u)" -ne 0 ]; then
 	echo "ERROR: Must be run as root" >&2
@@ -75,6 +110,7 @@ if [ "$ROOT_FSTYPE" != "btrfs" ]; then
 fi
 
 WORKDIR=$(mktemp -d /tmp/btrfs-update.XXXXXX)
+CREATED_NEW=0
 trap 'cleanup' EXIT
 
 cleanup()
@@ -85,6 +121,11 @@ cleanup()
 		umount "$WORKDIR/@_new/$mp" 2>/dev/null || true
 	done
 	umount "$WORKDIR/@_new" 2>/dev/null || true
+	# Staging failed: drop the partial snapshot this run created
+	if [ $CREATED_NEW -eq 1 ] && [ -d "$WORKDIR/@_new" ]; then
+		echo "==> Staging failed, deleting partial @_new snapshot" >&2
+		btrfs subvolume delete "$WORKDIR/@_new" >/dev/null 2>&1 || true
+	fi
 	umount "$WORKDIR" 2>/dev/null || true
 	rmdir "$WORKDIR" 2>/dev/null || true
 }
@@ -98,10 +139,20 @@ if [ ! -d "$WORKDIR/@" ]; then
 	exit 1
 fi
 
-# Block if a pending update already exists
+# Block if a pending update already exists.  @_old is not removed by a
+# reboot: the previous update must be accepted (delete @_old) or rolled back.
 if [ -d "$WORKDIR/@_old" ]; then
-	echo "ERROR: A pending update already exists (@_old is present)." >&2
-	echo "Reboot first or run btrfs-rollback.sh before staging another update." >&2
+	OLD_ID=$(btrfs subvolume show "$WORKDIR/@_old" | grep "Subvolume ID" | awk '{print $3}')
+	RUNNING_SUBVOL_ID=$(findmnt -n -o OPTIONS / | tr ',' '\n' | sed -n 's/^subvolid=//p')
+	echo "ERROR: A previous update is still pending (@_old, id=$OLD_ID, is present)." >&2
+	if [ "$OLD_ID" == "$RUNNING_SUBVOL_ID" ]; then
+		echo "The system has not been restarted into the staged update yet." >&2
+		echo "Reboot to activate it, or run btrfs-rollback.sh to discard it." >&2
+	else
+		echo "To accept the current update, delete @_old:" >&2
+		echo "  btrfs subvolume delete --subvolid $OLD_ID /" >&2
+		echo "To revert the current update instead, run btrfs-rollback.sh." >&2
+	fi
 	exit 1
 fi
 
@@ -113,6 +164,7 @@ fi
 
 echo "==> Creating snapshot @_new from @"
 btrfs subvolume snapshot "$WORKDIR/@" "$WORKDIR/@_new"
+CREATED_NEW=1
 
 echo "==> Preparing chroot environment"
 # Bind-mount the snapshot root on itself so that "/" inside the chroot is a
@@ -137,12 +189,12 @@ export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
 
 # Install packages
-if [ "$1" == "--upgrade" ]; then
+if [ "$MODE" == "upgrade" ]; then
 	echo "==> Running apt-get update in snapshot"
 	chroot "$WORKDIR/@_new" apt-get update
 	echo "==> Upgrading all packages in snapshot (dist-upgrade)"
 	chroot "$WORKDIR/@_new" apt-get dist-upgrade "${APT_OPTS[@]}"
-elif [ "$1" == "--apt" ]; then
+elif [ "$MODE" == "apt" ]; then
 	shift
 	echo "==> Running apt-get update in snapshot"
 	chroot "$WORKDIR/@_new" apt-get update
@@ -153,10 +205,6 @@ else
 	DEB_DIR="$WORKDIR/@_new/tmp/deferred-debs"
 	mkdir -p "$DEB_DIR"
 	for deb in "$@"; do
-		if [ ! -f "$deb" ]; then
-			echo "ERROR: File not found: $deb" >&2
-			exit 1
-		fi
 		cp "$deb" "$DEB_DIR/"
 	done
 	echo "==> Installing .deb packages in snapshot"
@@ -181,6 +229,12 @@ if [ -f "$GRUB_CFG" ] && grep -q '@_new\b' "$GRUB_CFG"; then
 	echo "==> Updating subvolume references in /boot/grub/grub.cfg (@_new -> @)"
 	sed -i 's/@_new\b/@/g' "$GRUB_CFG"
 fi
+
+# From here on, @_new holds the complete staged update.  Stop the failure
+# cleanup from deleting it: if a rename below fails, @_new may be the only
+# copy of the update, and the default subvolume still points at the
+# running root, so the system is unaffected.
+CREATED_NEW=0
 
 # Rename current @ to @_old
 echo "==> Renaming @ to @_old (rollback target)"
