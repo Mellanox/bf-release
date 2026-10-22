@@ -26,7 +26,7 @@
 # btrfs-deferred-update.sh — Install packages into a BTRFS snapshot of the
 # running root filesystem. The update is activated only after reboot.
 #
-# Usage: btrfs-deferred-update.sh [package1.deb package2.deb ...] | [--apt pkg1 pkg2 ...]
+# Usage: btrfs-deferred-update.sh [package1.deb ...] | [--apt pkg1 ...] | [--upgrade]
 #
 # The script:
 #   1. Mounts the top-level BTRFS volume (subvolid=5)
@@ -44,7 +44,7 @@ usage()
 	echo "Usage:"
 	echo "  $PROG pkg1.deb pkg2.deb ...     Install .deb files (dpkg -i)"
 	echo "  $PROG --apt pkg1 pkg2 ...       Install packages via apt-get"
-	echo "  $PROG --upgrade                 Upgrade all packages (apt-get upgrade)"
+	echo "  $PROG --upgrade                 Upgrade all packages (apt-get dist-upgrade)"
 	echo ""
 	echo "The update takes effect after reboot."
 	echo "Use btrfs-rollback.sh to revert before or after reboot."
@@ -79,10 +79,12 @@ trap 'cleanup' EXIT
 
 cleanup()
 {
-	# Unmount chroot binds if still mounted
-	for mp in proc sys dev/pts dev; do
+	# Unmount chroot binds if still mounted, in reverse mount order:
+	# the API filesystems first, the self-bind of the snapshot root last.
+	for mp in dev/pts dev sys proc; do
 		umount "$WORKDIR/@_new/$mp" 2>/dev/null || true
 	done
+	umount "$WORKDIR/@_new" 2>/dev/null || true
 	umount "$WORKDIR" 2>/dev/null || true
 	rmdir "$WORKDIR" 2>/dev/null || true
 }
@@ -113,23 +115,39 @@ echo "==> Creating snapshot @_new from @"
 btrfs subvolume snapshot "$WORKDIR/@" "$WORKDIR/@_new"
 
 echo "==> Preparing chroot environment"
+# Bind-mount the snapshot root on itself so that "/" inside the chroot is a
+# real mount point.  Without it, grub-probe (run by the kernel postinst hook
+# zz-update-grub) fails with "cannot find a device for /" and no kernel
+# package can be configured.  This must come before the binds below: a plain
+# bind mount does not carry submounts, so binding the root afterwards would
+# hide /proc, /sys and /dev inside the chroot.
+mount --bind "$WORKDIR/@_new" "$WORKDIR/@_new"
 mount --bind /proc "$WORKDIR/@_new/proc"
 mount --bind /sys "$WORKDIR/@_new/sys"
 mount --bind /dev "$WORKDIR/@_new/dev"
 mount --bind /dev/pts "$WORKDIR/@_new/dev/pts"
 
+# The EFI System Partition is intentionally not mounted in the chroot: it is
+# shared with the running system, so anything written there would take
+# effect immediately and could not be undone by btrfs-rollback.sh.
+
+# Use noninteractive frontend and force-confold to prevent dpkg conffile
+# prompts from blocking unattended runs.
+export DEBIAN_FRONTEND=noninteractive
+APT_OPTS=(-y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold")
+
 # Install packages
 if [ "$1" == "--upgrade" ]; then
 	echo "==> Running apt-get update in snapshot"
 	chroot "$WORKDIR/@_new" apt-get update
-	echo "==> Upgrading all packages in snapshot"
-	chroot "$WORKDIR/@_new" apt-get upgrade -y
+	echo "==> Upgrading all packages in snapshot (dist-upgrade)"
+	chroot "$WORKDIR/@_new" apt-get dist-upgrade "${APT_OPTS[@]}"
 elif [ "$1" == "--apt" ]; then
 	shift
 	echo "==> Running apt-get update in snapshot"
 	chroot "$WORKDIR/@_new" apt-get update
 	echo "==> Installing packages via apt-get: $*"
-	chroot "$WORKDIR/@_new" apt-get install -y "$@"
+	chroot "$WORKDIR/@_new" apt-get install "${APT_OPTS[@]}" "$@"
 else
 	# Copy .deb files into snapshot and install
 	DEB_DIR="$WORKDIR/@_new/tmp/deferred-debs"
@@ -142,8 +160,8 @@ else
 		cp "$deb" "$DEB_DIR/"
 	done
 	echo "==> Installing .deb packages in snapshot"
-	chroot "$WORKDIR/@_new" dpkg -i /tmp/deferred-debs/*.deb
-	chroot "$WORKDIR/@_new" apt-get install -f -y
+	chroot "$WORKDIR/@_new" dpkg --force-confdef --force-confold -i /tmp/deferred-debs/*.deb
+	chroot "$WORKDIR/@_new" apt-get install -f "${APT_OPTS[@]}"
 	rm -rf "$DEB_DIR"
 fi
 
@@ -152,6 +170,17 @@ umount "$WORKDIR/@_new/dev/pts"
 umount "$WORKDIR/@_new/dev"
 umount "$WORKDIR/@_new/sys"
 umount "$WORKDIR/@_new/proc"
+umount "$WORKDIR/@_new"
+
+# If update-grub ran inside the chroot, it saw the snapshot as subvolume
+# @_new and may have written that path into grub.cfg (for example
+# rootflags=subvol=@_new or /@_new/boot/...).  The snapshot is renamed to @
+# below, so point those references at @.
+GRUB_CFG="$WORKDIR/@_new/boot/grub/grub.cfg"
+if [ -f "$GRUB_CFG" ] && grep -q '@_new\b' "$GRUB_CFG"; then
+	echo "==> Updating subvolume references in /boot/grub/grub.cfg (@_new -> @)"
+	sed -i 's/@_new\b/@/g' "$GRUB_CFG"
+fi
 
 # Rename current @ to @_old
 echo "==> Renaming @ to @_old (rollback target)"
