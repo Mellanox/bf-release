@@ -87,6 +87,9 @@ endif
 	install -m 0644	src/override-openvswitch-switch          debian/$(pname)/etc/systemd/system/openvswitch-switch.service.d/override.conf
 	install -m 0644	src/override-openvswitch-switch          debian/$(pname)/etc/systemd/system/ovsdb-server.service.d/override.conf
 	install -m 0644	src/override-openibd                     debian/$(pname)/etc/systemd/system/openibd.service.d/override.conf
+	# systemd on Debian 12 and Ubuntu 22.04 only searches /lib for generators
+	dh_installdirs -p$(pname)  lib/systemd/system-generators
+	install -m 0755	src/bf-openibd-timeout-generator         debian/$(pname)/lib/systemd/system-generators/
 
 	# Network configuration
 ifeq ($(DIST_NAME_L), debian)
