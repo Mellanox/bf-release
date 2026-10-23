@@ -34,6 +34,8 @@ src/override-networking - networking override.conf
 
 src/override-netplan-ovs-cleanup - netplan-ovs-cleanup override.conf
 
+src/bf-openibd-timeout-generator - systemd generator that scales the openibd start timeout with the number of NVIDIA network PCI functions
+
 src/90-bluefield.conf - sysctl configuration file
 
 # NetworkManager configuration

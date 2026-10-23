@@ -112,6 +112,9 @@ After=openibd.service
 Requires=openibd.service
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/ovsdb-server.service.d/override.conf
+# openibd start timeout, scaled with the number of NVIDIA network PCI functions
+install -d %{buildroot}/usr/lib/systemd/system-generators
+install -m 0755 src/bf-openibd-timeout-generator %{buildroot}/usr/lib/systemd/system-generators/
 %endif
 
 # Oracle Linux requires a longer timeout for rdma-load-modules@infiniband
@@ -592,6 +595,7 @@ fi
 /etc/systemd/system/openibd.service.d/override.conf
 /etc/systemd/system/openvswitch.service.d/override.conf
 /etc/systemd/system/ovsdb-server.service.d/override.conf
+/usr/lib/systemd/system-generators/bf-openibd-timeout-generator
 %endif
 /etc/NetworkManager/conf.d/*
 %if 0%{?oraclelinux}
