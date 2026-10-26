@@ -98,6 +98,9 @@ cat > %{buildroot}/etc/systemd/system/openibd.service.d/override.conf << EOF
 [Unit]
 Wants=openvswitch-switch.service
 Before=openvswitch-switch.service
+
+[Service]
+TimeoutStartSec=20min
 EOF
 chmod 644 %{buildroot}/etc/systemd/system/openibd.service.d/override.conf
 cat > %{buildroot}/etc/systemd/system/openvswitch.service.d/override.conf << EOF
