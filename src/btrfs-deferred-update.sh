@@ -123,14 +123,26 @@ WORKDIR=$(mktemp -d /tmp/btrfs-update.XXXXXX)
 CREATED_NEW=0
 trap 'cleanup' EXIT
 
+# Unmount the whole chroot mount tree.  If something inside the chroot still
+# holds a mount busy, detach it lazily so the snapshot can still be renamed;
+# the mount goes away when it is no longer used.  Check with findmnt, not
+# mountpoint: a Btrfs subvolume has its own device number, so mountpoint
+# reports it as a mount point even when nothing is mounted on it.
+umount_chroot()
+{
+	if ! findmnt -rn --mountpoint "$WORKDIR/@_new" > /dev/null; then
+		return 0
+	fi
+	if ! umount -R "$WORKDIR/@_new"; then
+		echo "WARNING: chroot mounts are busy, detaching them lazily" >&2
+		umount -R -l "$WORKDIR/@_new"
+	fi
+}
+
 cleanup()
 {
-	# Unmount chroot binds if still mounted, in reverse mount order:
-	# the API filesystems first, the self-bind of the snapshot root last.
-	for mp in dev/pts dev sys proc; do
-		umount "$WORKDIR/@_new/$mp" 2>/dev/null || true
-	done
-	umount "$WORKDIR/@_new" 2>/dev/null || true
+	# Unmount the chroot mount tree if it is still mounted
+	umount_chroot 2>/dev/null || true
 	# Staging failed: drop the partial snapshot this run created
 	if [ $CREATED_NEW -eq 1 ] && [ -d "$WORKDIR/@_new" ]; then
 		echo "==> Staging failed, deleting partial @_new snapshot" >&2
@@ -142,6 +154,9 @@ cleanup()
 
 echo "==> Mounting top-level BTRFS volume from $ROOT_DEV"
 mount -t btrfs -o subvolid=5 "$ROOT_DEV" "$WORKDIR"
+# Keep the chroot mounts made below WORKDIR out of the running system's
+# mount peer groups
+mount --make-private "$WORKDIR"
 
 # Verify @ exists
 if [ ! -d "$WORKDIR/@" ]; then
@@ -184,10 +199,54 @@ echo "==> Preparing chroot environment"
 # bind mount does not carry submounts, so binding the root afterwards would
 # hide /proc, /sys and /dev inside the chroot.
 mount --bind "$WORKDIR/@_new" "$WORKDIR/@_new"
-mount --bind /proc "$WORKDIR/@_new/proc"
-mount --bind /sys "$WORKDIR/@_new/sys"
-mount --bind /dev "$WORKDIR/@_new/dev"
-mount --bind /dev/pts "$WORKDIR/@_new/dev/pts"
+
+# Bind /proc, /sys and /dev recursively, so the chroot sees the mounts the
+# running system has under them (efivarfs, securityfs, /dev/pts, /dev/shm
+# and so on).  With plain binds those were missing, and package scripts
+# mounted efivarfs again under /sys.
+#
+# The copies of shared mounts join the running system's peer groups, so
+# mount and unmount events would cross in both directions: a filesystem
+# mounted inside the chroot (for example efivarfs by a package script)
+# appeared on the running system, and unmounting the chroot copies could
+# unmount them on the running system.  Make each copy a slave immediately,
+# before anything can be mounted or unmounted below it, so events only flow
+# from the running system into the chroot.
+bind_api_fs()
+{
+	mount --rbind "$1" "$WORKDIR/@_new$1"
+	mount --make-rslave "$WORKDIR/@_new$1"
+}
+bind_api_fs /proc
+bind_api_fs /sys
+bind_api_fs /dev
+
+# Name resolution: /etc/resolv.conf usually links into /run (for example
+# /run/systemd/resolve/stub-resolv.conf), which is empty in the snapshot,
+# so apt-get could not resolve network repositories.  Bind only the
+# directory that holds the running system's resolv.conf, read-only.  The
+# rest of /run is not bound: it holds the running system's sockets and
+# state, and package scripts check it to decide whether to talk to systemd.
+RESOLV_CONF=$(readlink -f /etc/resolv.conf || true)
+RESOLV_DIR_CREATED=
+case "$RESOLV_CONF" in
+	/run/*)
+		if [ -f "$RESOLV_CONF" ]; then
+			RESOLV_DIR=$(dirname "$RESOLV_CONF")
+			# Remember the top directory that has to be created, so it
+			# can be removed from the snapshot again.
+			dir=$RESOLV_DIR
+			while [ "$dir" != "/run" ] && [ ! -d "$WORKDIR/@_new$dir" ]; do
+				RESOLV_DIR_CREATED=$dir
+				dir=$(dirname "$dir")
+			done
+			mkdir -p "$WORKDIR/@_new$RESOLV_DIR"
+			mount --bind "$RESOLV_DIR" "$WORKDIR/@_new$RESOLV_DIR"
+			mount --make-rslave "$WORKDIR/@_new$RESOLV_DIR"
+			mount -o remount,bind,ro "$WORKDIR/@_new$RESOLV_DIR"
+		fi
+		;;
+esac
 
 # Keep boot loader installation off the EFI System Partition while staging.
 # The ESP is shared with the running system, so anything written there takes
@@ -297,11 +356,13 @@ ESP_SKIPPED=$(awk '!seen[$0]++' "$WORKDIR/@_new$ESP_LOG")
 rm -f "$WORKDIR/@_new$ESP_LOG"
 
 echo "==> Unmounting chroot binds"
-umount "$WORKDIR/@_new/dev/pts"
-umount "$WORKDIR/@_new/dev"
-umount "$WORKDIR/@_new/sys"
-umount "$WORKDIR/@_new/proc"
-umount "$WORKDIR/@_new"
+umount_chroot
+
+# Remove the directories created for the resolv.conf bind.  /run is a tmpfs
+# on the running system, so they are not part of the update.
+if [ -n "$RESOLV_DIR_CREATED" ]; then
+	rm -rf --one-file-system "$WORKDIR/@_new$RESOLV_DIR_CREATED"
+fi
 
 # If update-grub ran inside the chroot, it saw the snapshot as subvolume
 # @_new and may have written that path into grub.cfg (for example
