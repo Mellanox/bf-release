@@ -808,6 +808,16 @@ configure_rootfs()
 	fi
 }
 
+reset_machine_id()
+{
+	# The live installer boots with a fixed machine-id that is baked into the
+	# ISO image, and subiquity copies the live /etc/machine-id into the target.
+	# Empty both files so that systemd generates a unique id on the first boot.
+	log "INFO: Reset /etc/machine-id, a unique id is generated on the first boot"
+	rm -f /var/lib/dbus/machine-id /etc/machine-id
+	touch /var/lib/dbus/machine-id /etc/machine-id
+}
+
 set_root_password()
 {
 	if [ -n "${ubuntu_PASSWORD}" ]; then
@@ -2061,6 +2071,8 @@ global_installation_flow()
 	if [ "$WITH_NIC_FW_UPDATE" == "yes" ]; then
 		update_nic_firmware
 	fi
+
+	reset_machine_id
 
 	if function_exists bfb_post_install; then
 		log "INFO: Running bfb_post_install from bf.cfg"
