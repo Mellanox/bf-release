@@ -1002,7 +1002,11 @@ update_nic_firmware()
 reset_nic_firmware()
 {
 	if [ "$NIC_FW_RESET" != "yes" ]; then
-		log "Skip NIC Firmware reset"
+		if [ $NIC_FW_UPDATE_PASSED -eq 1 ]; then
+			log "INFO: NIC firmware was updated to $(provided_nic_fw). NIC firmware reset is disabled (NIC_FW_RESET=no). Run mlxfwreset or power cycle the host to activate it"
+		else
+			log "INFO: Skip NIC Firmware reset"
+		fi
 		return
 	fi
 
