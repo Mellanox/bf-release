@@ -24,7 +24,11 @@ Vendor: Nvidia
 %description
 BlueField release files and post-installation configuration
 
+%if 0%{?alinux}
+%{!?NETWORKING_TIMEOUT: %global NETWORKING_TIMEOUT 90}
+%else
 %{!?NETWORKING_TIMEOUT: %global NETWORKING_TIMEOUT 30}
+%endif
 
 %define __python %{__python3}
 
