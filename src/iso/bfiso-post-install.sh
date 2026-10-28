@@ -601,8 +601,13 @@ configure_services()
 	ilog "$(/bin/systemctl enable mlx-openipmi.service > /dev/null 2>&1)"
 	if is_bf4; then ACTION=disable; else ACTION=enable; fi; ilog "$(/bin/systemctl $ACTION mlx_ipmid.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl enable set_emu_param.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable bfvcheck.service > /dev/null 2>&1)"
-	ilog "$(/bin/systemctl enable bfup.service > /dev/null 2>&1)"
+	if is_bf4; then
+		ilog "$(/bin/systemctl disable bfvcheck.service > /dev/null 2>&1)"
+		ilog "$(/bin/systemctl disable bfup.service > /dev/null 2>&1)"
+	else
+		ilog "$(/bin/systemctl enable bfvcheck.service > /dev/null 2>&1)"
+		ilog "$(/bin/systemctl enable bfup.service > /dev/null 2>&1)"
+	fi
 	ilog "$(/bin/systemctl disable openvswitch-ipsec > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable srp_daemon.service > /dev/null 2>&1)"
 	ilog "$(/bin/systemctl disable ibacm.service > /dev/null 2>&1)"
