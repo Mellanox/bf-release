@@ -1154,6 +1154,8 @@ EOF
 	/bin/rm -f /etc/bf.cfg
 	if [ -e /etc/bf.cfg.orig ]; then
 		grep -v PXE_DHCP_CLASS_ID= /etc/bf.cfg.orig > /etc/bf.cfg
+		chmod --reference=/etc/bf.cfg.orig /etc/bf.cfg
+		/bin/rm -f /etc/bf.cfg.orig
 	fi
 fi
 
