@@ -13,6 +13,7 @@ BuildRequires: redhat-lsb-core
 Requires: kexec-tools
 Requires: acpid
 Requires: grub2-tools
+Requires: grubby
 Requires: NetworkManager
 Requires: mlnx-tools
 Requires: ethtool
@@ -61,6 +62,7 @@ install -m 0755	src/mlnx-pre-hlk     %{buildroot}/opt/mellanox/hlk/mlnx-pre-hlk
 install -m 0755	src/mlnx-post-hlk    %{buildroot}/opt/mellanox/hlk/mlnx-post-hlk
 install -m 0755	src/kexec_reboot     %{buildroot}/sbin/kexec_reboot
 install -m 0755	src/dpu-bmc-upgrade  %{buildroot}/%{_sbindir}/dpu-bmc-upgrade
+install -m 0755	src/bf-select-kernel %{buildroot}/%{_sbindir}/bf-select-kernel
 
 # Sysctl
 install -d %{buildroot}/usr/lib/sysctl.d/
@@ -552,6 +554,12 @@ if [ -e /etc/os-release ]; then
     fi
 fi
 
+%transfiletriggerin -- %{_sbindir}/bf-select-kernel /boot /lib/modules /usr/lib/modules /usr/share/doc/doca-runtime-kernel /usr/share/doc/doca-devel-kernel
+# Runs once, after all package posttrans scripts, including initramfs generation.
+# Trigger on our helper too, so installing/upgrading bf-release also selects it.
+cat > /dev/null
+%{_sbindir}/bf-select-kernel
+
 %files
 /etc/mlnx-release
 
@@ -573,6 +581,7 @@ fi
 
 /sbin/kexec_reboot
 %{_sbindir}/dpu-bmc-upgrade
+%{_sbindir}/bf-select-kernel
 
 /usr/lib/sysctl.d/*
 /lib/udev/rules.d/*
