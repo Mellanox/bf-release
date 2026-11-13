@@ -1,0 +1,167 @@
+#!/bin/sh
+#
+# bf-openibd-timeout-generator - scale the openibd.service start timeout
+# with the number of NVIDIA network PCI functions.
+#
+# openibd runs mlnx_bf_configure, which configures the NVIDIA network PCI
+# functions one after another (switchdev mode, devlink parameters, SFs).
+# With ASTRA, a BlueField-4 also exposes the ConnectX functions, so the
+# number of functions grows from 4 to 36 or 68. A fixed timeout is then
+# either too short for the large setups or too long to catch a real hang
+# on the small ones.
+#
+# This generator writes a drop-in that sets
+#
+#     TimeoutStartSec = OPENIBD_TIMEOUT_BASE + OPENIBD_TIMEOUT_PER_FUNC * N
+#
+# where N is the number of NVIDIA (0x15b3) network class PCI physical
+# functions. Both values can be set in /etc/mellanox/mlnx-bf.conf.
+#
+# The generator never sets a timeout lower than the one openibd.service
+# already has: it writes nothing if that timeout is disabled or cannot be
+# parsed. Its drop-in sorts first, so any other drop-in that sets
+# TimeoutStartSec= takes precedence.
+#
+# See systemd.generator(7).
+
+normal_dir=$1
+[ -n "$normal_dir" ] || exit 0
+
+# Overridable for testing only.
+sysfs_dir=${BF_OPENIBD_TIMEOUT_SYSFS_DIR:-/sys}
+conf=${BF_OPENIBD_TIMEOUT_CONF:-/etc/mellanox/mlnx-bf.conf}
+unit_path=${BF_OPENIBD_TIMEOUT_UNIT_PATH:-"/etc/systemd/system /run/systemd/system /usr/lib/systemd/system /lib/systemd/system"}
+kmsg=${BF_OPENIBD_TIMEOUT_KMSG:-/dev/kmsg}
+
+# Generators cannot use syslog and their stderr is not kept, so log to the
+# kernel log buffer; fall back to stderr when run by hand.
+warn()
+{
+	{ echo "<4>bf-openibd-timeout-generator: $*" > "$kmsg"; } 2>/dev/null ||
+		echo "bf-openibd-timeout-generator: $*" >&2
+}
+
+# Print the integer value of setting $1 from mlnx-bf.conf, or $2 if it is
+# not set or not valid. The file is parsed, not sourced, so nothing in it
+# is executed.
+conf_int()
+{
+	line=$(grep "^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=" "$conf" 2>/dev/null | tail -n 1)
+	if [ -z "$line" ]; then
+		echo "$2"
+		return
+	fi
+	val=$(printf '%s\n' "$line" | sed -n \
+		"s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=[\"']\{0,1\}\([0-9]\{1,7\}\)[\"']\{0,1\}[[:space:]]*\(#.*\)\{0,1\}\$/\2/p")
+	if [ -z "$val" ]; then
+		warn "invalid $1 in $conf, using $2"
+		echo "$2"
+		return
+	fi
+	# Strip leading zeros so that shell arithmetic does not read octal.
+	val=${val#"${val%%[!0]*}"}
+	echo "${val:-0}"
+}
+
+# Print systemd time span $1 in whole seconds, rounded up, "inf" if it
+# disables the timeout, or nothing if it cannot be parsed.
+timespan_to_sec()
+{
+	[ "$1" = infinity ] && { echo inf; return; }
+
+	rest=$1
+	sec=0
+	usec=0
+	while :; do
+		rest=${rest#"${rest%%[! ]*}"}
+		[ -n "$rest" ] || break
+		num=${rest%%[!0-9]*}
+		case $num in
+		""|??????????*)	return ;;
+		esac
+		rest=${rest#"$num"}
+		num=${num#"${num%%[!0]*}"}
+		num=${num:-0}
+		rest=${rest#"${rest%%[! ]*}"}
+		unit=${rest%%[!a-zA-Z]*}
+		rest=${rest#"$unit"}
+		case $unit in
+		us|usec)			usec=$((usec + num)) ;;
+		ms|msec)			usec=$((usec + num * 1000)) ;;
+		""|s|sec|second|seconds)	sec=$((sec + num)) ;;
+		m|min|minute|minutes)		sec=$((sec + num * 60)) ;;
+		h|hr|hour|hours)		sec=$((sec + num * 3600)) ;;
+		d|day|days)			sec=$((sec + num * 86400)) ;;
+		w|week|weeks)			sec=$((sec + num * 604800)) ;;
+		M|month|months)			sec=$((sec + num * 2629800)) ;;
+		y|year|years)			sec=$((sec + num * 31557600)) ;;
+		*)				return ;;
+		esac
+	done
+	# A zero time span disables the timeout, like "infinity".
+	if [ "$sec" -eq 0 ] && [ "$usec" -eq 0 ]; then
+		echo inf
+		return
+	fi
+	echo $((sec + (usec + 999999) / 1000000))
+}
+
+unit_file=
+for dir in $unit_path; do
+	if [ -e "$dir/openibd.service" ]; then
+		unit_file=$dir/openibd.service
+		break
+	fi
+done
+[ -n "$unit_file" ] || exit 0
+
+unit_value=$(sed -n 's/^[[:space:]]*Timeout\(Start\)\{0,1\}Sec[[:space:]]*=[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\2/p' \
+	"$unit_file" 2>/dev/null | tail -n 1)
+if [ -n "$unit_value" ]; then
+	unit_sec=$(timespan_to_sec "$unit_value")
+	# Disabled, or not understood: keep the unit's own timeout.
+	case $unit_sec in
+	""|inf)	exit 0 ;;
+	esac
+else
+	unit_sec=0
+	# Without a timeout setting, Type=oneshot services have no start
+	# timeout at all.
+	unit_type=$(sed -n 's/^[[:space:]]*Type[[:space:]]*=[[:space:]]*\([a-z-]*\).*/\1/p' \
+		"$unit_file" 2>/dev/null | tail -n 1)
+	[ "$unit_type" = oneshot ] && exit 0
+fi
+
+base=$(conf_int OPENIBD_TIMEOUT_BASE 180)
+per_func=$(conf_int OPENIBD_TIMEOUT_PER_FUNC 15)
+
+nfuncs=0
+for dev in "$sysfs_dir"/bus/pci/devices/*; do
+	[ -r "$dev/vendor" ] || continue
+	[ -r "$dev/class" ] || continue
+	# SR-IOV VFs are not configured by mlnx_bf_configure
+	[ -L "$dev/physfn" ] && continue
+	read -r vendor < "$dev/vendor"
+	read -r class < "$dev/class"
+	[ "$vendor" = 0x15b3 ] || continue
+	case $class in
+	0x02*)	nfuncs=$((nfuncs + 1)) ;;	# Ethernet and InfiniBand
+	esac
+done
+
+scaled=$((base + per_func * nfuncs))
+timeout=$scaled
+if [ "$unit_sec" -gt "$timeout" ]; then
+	timeout=$unit_sec
+fi
+
+mkdir -p "$normal_dir/openibd.service.d" || exit 0
+cat > "$normal_dir/openibd.service.d/00-bf-openibd-timeout.conf" <<EOF
+# Generated by bf-openibd-timeout-generator
+# ${nfuncs} NVIDIA network PCI functions: ${base}s + ${nfuncs} x ${per_func}s = ${scaled}s
+# Timeout in ${unit_file}: ${unit_value:-not set}
+[Service]
+TimeoutStartSec=${timeout}
+EOF
+
+exit 0
