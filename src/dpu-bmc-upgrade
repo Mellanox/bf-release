@@ -78,6 +78,9 @@ if [ $is_SecureBoot -eq 1 ]; then
                 mst start > /dev/null 2>&1
         fi
 		flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+		# MST may be unavailable (e.g. its kernel module was installed only for
+		# a newer kernel that is not running yet). Fall back to the PCI device.
+		flint_dev=${flint_dev:-$cx_pcidev}
 		FLINT=flint
 fi
 
@@ -145,7 +148,7 @@ fi
 
 if [ "$UPDATE_NIC_FW_GOLDEN_IMAGE" == "yes" ]; then
 	if [ ! -e "${NIC_FW_GOLDEN_IMAGE}" ]; then
-		log "ERROR: NIC firmware golden image ${NIC_FW_GOLDEN_IMAGE} was not found"
+		ilog "NIC firmware Golden Image for ${dpu_part_number} was not found. Skipping NIC firmware Golden Image update"
 		UPDATE_NIC_FW_GOLDEN_IMAGE="no"
 	fi
 fi

@@ -155,6 +155,8 @@ if [ $is_SecureBoot -eq 1 ]; then
                 mst start > /dev/null 2>&1
         fi
         flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+        # MST may be unavailable. Fall back to the PCI device.
+        flint_dev=${flint_dev:-$cx_pcidev}
         FLINT=flint
 fi
 
@@ -944,14 +946,44 @@ fw_update()
 	fi
 }
 
+# Return the device to pass to mlxfwreset.
+# Prefer the MST device. MST may be unavailable, e.g. after "apt upgrade"
+# installed the MST kernel module only for a new kernel that is not running
+# yet. In that case fall back to the PCI device instead of failing the
+# reset capability query.
+fw_reset_dev()
+{
+	local dev
+
+	dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null | head -1)
+	if [ -z "$dev" ]; then
+		mst start > /dev/null 2>&1
+		dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null | head -1)
+	fi
+	if [ -z "$dev" ]; then
+		dev=$cx_pcidev
+	fi
+	echo "$dev"
+}
+
 fw_reset()
 {
+	local reset_dev
+	local query
+
 	/sbin/modprobe -a mlx5_core ib_umad
 
+	reset_dev=$(fw_reset_dev)
+	if [ -z "$reset_dev" ]; then
+		log "INFO: NIC device was not found. Host power cycle is required"
+		return
+	fi
+	ilog "NIC Firmware reset device: $reset_dev"
+
 	MLXFWRESET_TIMEOUT=${MLXFWRESET_TIMEOUT:-180}
-	if (mlxfwreset -d /dev/mst/mt*_pciconf0 q | grep live-Patch | grep -qw "\-Supported"); then
+	if (mlxfwreset -d $reset_dev q 2>&1 | grep live-Patch | grep -qw "\-Supported"); then
 		log "INFO: Live Patch NIC Firmware reset is supported."
-		msg=$(mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 0 r 2>&1)
+		msg=$(mlxfwreset -d $reset_dev -y -l 0 r 2>&1)
 		if [ $? -ne 0 ]; then
 			log "INFO: Live Patch NIC Firmware reset failed."
 			log "INFO: $msg"
@@ -971,17 +1003,27 @@ fw_reset()
 		fi
 	fi
 	SECONDS=0
-	while ! (mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver is the owner" | grep -qw "\-Supported")
+	while true
 	do
+		query=$(mlxfwreset -d $reset_dev q 2>&1)
+		if (echo "$query" | grep -w "Driver is the owner" | grep -qw "\-Supported"); then
+			break
+		fi
 		if [ $SECONDS -gt $MLXFWRESET_TIMEOUT ]; then
-			log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+			if (echo "$query" | grep -qw "Driver is the owner"); then
+				log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+			else
+				log "INFO: Failed to query NIC Firmware reset capability on $reset_dev. Host power cycle is required"
+			fi
+			ilog "$query"
 			return
 		fi
 		sleep 1
 	done
 
-	if ! (mlxfwreset -d /dev/mst/mt*_pciconf0 q 2>&1 | grep -w "Driver restart and PCI reset" | grep -qw "\-Supported"); then
+	if ! (echo "$query" | grep -w "Driver restart and PCI reset" | grep -qw "\-Supported"); then
 		log "INFO: NIC Firmware reset is not supported. Host power cycle is required"
+		ilog "$query"
 		return
 	fi
 
@@ -990,7 +1032,7 @@ fw_reset()
 	# as mlxfwreset will restart the DPU
 	sleep 3
 
-	msg=$(mlxfwreset -d /dev/mst/mt*_pciconf0 -y -l 3 --sync 1 r 2>&1)
+	msg=$(mlxfwreset -d $reset_dev -y -l 3 --sync 1 r 2>&1)
 	if [ $? -ne 0 ]; then
 		log "INFO: NIC Firmware reset failed. System level reset is required"
 		log "INFO: $msg"
