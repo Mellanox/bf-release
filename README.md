@@ -78,3 +78,42 @@ src/debian-network/1-oob_net0
 src/mlnx-powerconf
 
 src/rebootcontrol
+
+# RPM kernel selection
+
+`bf-select-kernel` selects the installed kernel required by
+`doca-runtime-kernel` / `doca-devel-kernel` for the next boot. A transaction file
+trigger invokes it after RPM post-transaction scripts when the helper, kernel
+files, modules, or DOCA kernel profile files are installed or upgraded. This also
+covers kernel upgrades that do not upgrade `bf-release` itself.
+
+The helper resolves the exact kernel requirement through the installed RPMs,
+including split `kernel` / `kernel-core` packages. It checks the image, initramfs,
+and module directory before regenerating GRUB and selecting that image with
+`grubby`. Existing kernel arguments are preserved. EFI forwarding stubs are left
+intact; the configuration behind them is updated. Failed generation or selection
+restores the previous GRUB configuration and environment. Failures are reported
+by the RPM trigger; installed packages are not rolled back.
+
+To inspect the selected target without writing boot files:
+
+```sh
+sudo bf-select-kernel --check
+```
+
+Image builds without live EFI, RHCOS/OSTree systems, and installations without an
+exact DOCA kernel requirement are skipped. Ambiguous kernel or boot layouts and
+missing boot files produce an error rather than selecting a different kernel.
+The helper does not install/remove kernels, change version locks, activate
+firmware, or reboot. Repository and kernel lock policy must allow DNF to install
+the required kernel first. The selection takes effect at the next planned reboot.
+
+Run the isolated boot-selection tests with:
+
+```sh
+python3 -B -m unittest discover -s tests -p 'test_bf_select_kernel.py' -v
+```
+
+These tests use temporary boot files and mocked RPM/GRUB tools. Validation on
+supported RPM distros and BlueField hardware is required before removing the
+manual kernel/GRUB steps from upgrade documentation.
