@@ -454,6 +454,57 @@ get_bmc_firmware_version()
 	ilog "Running BMC firmware version: $BMC_INSTALLED_VERSION"
 }
 
+# Print the firmware version that the NIC firmware MISOC register reports as
+# staged for activation ($1: 2 = BMC, 3 = CEC). Print nothing when no image is
+# staged. Return 1 when the register cannot be read.
+get_misoc_pending_version()
+{
+	local output hex version=""
+
+	output=$(mlxreg -d ${flint_dev} --reg_name MISOC --get --index type=$1,query_pending=1 2>&1) || return 1
+	if echo "$output" | grep -qE "^query_not_available[[:space:]]+\|[[:space:]]+0x0*1$"; then
+		return 0
+	fi
+	for hex in $(echo "$output" | grep -E "^version\[[0-9]+\]" | awk '{print $NF}'); do
+		hex=$((hex & 0xff))
+		[ $hex -eq 0 ] && break
+		version="${version}$(printf "\\$(printf '%03o' $hex)")"
+	done
+	echo "$version"
+}
+
+# A BMC image staged by an earlier install is activated by the next BMC reset.
+# Read it, so that an install whose version is already running can replace it.
+get_bmc_pending_version()
+{
+	local pending
+
+	BMC_PENDING_VERSION=""
+	if ! pending=$(get_misoc_pending_version 2); then
+		ilog "- INFO: Cannot read pending BMC firmware version"
+		return 1
+	fi
+	BMC_PENDING_VERSION=$(echo "$pending" | grep -o "\([0-9]\+\).\([0-9]\+\)-\([0-9]\+\)")
+	if [ -n "$BMC_PENDING_VERSION" ]; then
+		ilog "Pending BMC firmware version: $BMC_PENDING_VERSION"
+	fi
+}
+
+get_cec_pending_version()
+{
+	local pending
+
+	CEC_PENDING_VERSION=""
+	if ! pending=$(get_misoc_pending_version 3); then
+		ilog "- INFO: Cannot read pending CEC firmware version"
+		return 1
+	fi
+	CEC_PENDING_VERSION=$(echo "$pending" | sed -e "s/[_|-]/./g;s/.n02//")
+	if [ -n "$CEC_PENDING_VERSION" ]; then
+		ilog "Pending CEC firmware version: $CEC_PENDING_VERSION"
+	fi
+}
+
 # Wait for a golden-image device in FirmwareInventory before update-multipart (Redmine #5149533)
 wait_for_fw_inventory_device()
 {
@@ -528,6 +579,8 @@ update_bmc_fw()
 	if [ "${BMC_IMAGE_VERSION}" == "${BMC_INSTALLED_VERSION}" ]; then
 		if [ "X${FORCE_BMC_FW_INSTALL}" == "Xyes" ]; then
 			ilog "Installed BMC version is the same as provided. FORCE_BMC_FW_INSTALL is set."
+		elif get_bmc_pending_version && [ -n "${BMC_PENDING_VERSION}" ] && [ "${BMC_PENDING_VERSION}" != "${BMC_IMAGE_VERSION}" ]; then
+			ilog "Installed BMC version is the same as provided, but BMC version ${BMC_PENDING_VERSION} is staged for the next BMC reset. Replacing it."
 		else
 			ilog "Installed BMC version is the same as provided. Skipping BMC firmware update."
 			return 0
@@ -635,6 +688,8 @@ update_cec_fw()
 	if [ "${CEC_IMAGE_VERSION}" == "${CEC_INSTALLED_VERSION}" ]; then
 		if [ "X${FORCE_CEC_INSTALL}" == "Xyes" ]; then
 			ilog "Installed CEC version is the same as provided. FORCE_CEC_INSTALL is set."
+		elif get_cec_pending_version && [ -n "${CEC_PENDING_VERSION}" ] && [ "${CEC_PENDING_VERSION}" != "${CEC_IMAGE_VERSION}" ]; then
+			ilog "Installed CEC version is the same as provided, but CEC version ${CEC_PENDING_VERSION} is staged for the next CEC reset. Replacing it."
 		else
 			ilog "Installed CEC version is the same as provided. Skipping CEC firmware update."
 			return 0
