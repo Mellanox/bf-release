@@ -1,0 +1,12 @@
+# BlueField-1/2/3: tmfifo_net0 host-to-Arm static link
+[Match]
+Name=tmfifo_net0
+
+[Network]
+Address=192.168.100.2/30
+DNS=192.168.100.1
+LinkLocalAddressing=no
+
+[Route]
+Gateway=192.168.100.1
+Metric=1025

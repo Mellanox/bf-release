@@ -67,8 +67,6 @@ src/cloud/seed/nocloud-net/meta-data
 
 src/cloud/seed/nocloud-net/user-data
 
-src/cloud/seed/nocloud-net/network-config
-
 # Network configuration files for Debian:
 
 src/debian-network/0-tmfifo

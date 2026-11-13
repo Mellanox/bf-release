@@ -166,6 +166,16 @@ EOF
 		disable_service strongswan-starter.service
 	fi
 
+	# Network is configured by the systemd-networkd files shipped in
+	# /usr/lib/systemd/network. Disable cloud-init network configuration
+	# on both install and upgrade so it does not fall back to its own
+	# DHCP configuration now that the NoCloud network-config seed is gone.
+	mkdir -p /etc/cloud/cloud.cfg.d
+	cat > /etc/cloud/cloud.cfg.d/99-bf-network.cfg << EOF
+network:
+  config: disabled
+EOF
+
 	# Preload the TPM grub module on both install and upgrade so that
 	# systems upgrading from an older bf-release also pick it up.
 	if [ -e /etc/default/grub ]; then

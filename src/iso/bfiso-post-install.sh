@@ -262,8 +262,6 @@ configure_target_os()
 	if (lspci -n -d 15b3: | grep -wq 'a2d2'); then
 		# BlueField-1
 		ln -snf snap_rpc_init_bf1.conf /etc/mlnx_snap/snap_rpc_init.conf
-		# OOB interface does not exist on BlueField-1
-		sed -i -e '/oob_net0/,+1d' /var/lib/cloud/seed/nocloud-net/network-config
 	elif (lspci -n -d 15b3: | grep -wq 'a2d6'); then
 		# BlueField-2
 		ln -snf snap_rpc_init_bf2.conf /etc/mlnx_snap/snap_rpc_init.conf

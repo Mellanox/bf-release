@@ -101,6 +101,7 @@ endif
 
 	# systemd-networkd configuration
 	dh_installdirs -p$(pname)  usr/lib/systemd/network
+	install -m 0644 src/networkd/00-tmfifo.network     debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/01-nodnic.network     debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/02-oob.network        debian/$(pname)/usr/lib/systemd/network/
 	install -m 0644 src/networkd/03-mgmt.netdev        debian/$(pname)/usr/lib/systemd/network/

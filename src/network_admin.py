@@ -47,7 +47,6 @@ MLXREG = '/usr/bin/mlxreg'
 SUPPORTED_OPERATIONS=['ipconfig', 'mtuconfig', 'gwconfig', 'dnsconfig', 'domainconfig', 'roceconfig', 'vlanconfig']
 SUPPORTED_ACTIONS=['set', 'show']
 EXTENDED_ACTIONS=['set', 'show', 'list', 'remove']
-cloud_init_config = "/var/lib/cloud/seed/nocloud-net/network-config"
 netplan_config = "/etc/netplan/60-mlnx.yaml"
 
 network_config = netplan_config
