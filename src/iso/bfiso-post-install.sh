@@ -714,12 +714,6 @@ EOF
 	# post-install reboot they would linger next to the SFs that install.sh creates.
 	: > /etc/mellanox/mlnx-sf.conf
 
-	# Place oob_net0 into the mgmt VRF so OOB management traffic is
-	# isolated from the data-plane.
-	if [ -f /usr/lib/systemd/network/02-oob.network ]; then
-		sed -i '/^\[Network\]/a VRF=mgmt' /usr/lib/systemd/network/02-oob.network
-	fi
-
 	# Run provisioning-install.sh in the chroot now so the post-install power cycle applies
 	# the reboot-requiring configuration. provisioning-done records success;
 	# without it the first-boot install.sh aborts.
@@ -739,6 +733,49 @@ EOF
 		RC=$((RC+rc))
 		err_msg="SFC-HBN provisioning install (provisioning-install.sh) failed"
         log "ERROR: SFC-HBN provisioning install (provisioning-install.sh) failed with rc=$rc; see /var/log/sfc-install.log on the target"
+	fi
+
+	# SFC-HBN configures tmfifo_net0, oob_net0 and the mgmt VRF with its own
+	# /etc/systemd/network/25-* files. systemd-networkd uses the first
+	# matching file in lexical order, so the bf-release defaults for the same
+	# interfaces would take precedence. Remove them so HBN uses its own
+	# configuration.
+	remove_hbn_overridden_networkd
+}
+
+# Remove the bf-release systemd-networkd files for the interfaces that SFC-HBN
+# configures itself. Only files whose HBN replacement exists are removed.
+remove_hbn_overridden_networkd()
+{
+	local pair
+	local hbn_file
+	local bf_file
+
+	for pair in \
+		25-tmfifo-net0.network:00-tmfifo.network \
+		25-oob-net0.network:02-oob.network \
+		25-mgmt.network:03-mgmt.network \
+		25-mgmt.netdev:03-mgmt.netdev
+	do
+		hbn_file=/etc/systemd/network/${pair%%:*}
+		bf_file=/usr/lib/systemd/network/${pair##*:}
+		if [ -e "$hbn_file" ] && [ -e "$bf_file" ]; then
+			ilog "Removing $bf_file: overridden by SFC-HBN $hbn_file"
+			/bin/rm -f "$bf_file"
+		fi
+	done
+
+	# BlueField-4: 02-oob.network also attached vlan4040 to oob_net0. It
+	# connects the DPU OS and the host (through nodnic0) to the DPU BMC, so
+	# keep it by extending the HBN oob_net0 configuration with a drop-in.
+	if (lspci -n -d 15b3: | grep -wq 'a2df') && \
+	   [ -e /etc/systemd/network/25-oob-net0.network ]; then
+		ilog "BlueField-4: attaching vlan4040 to oob_net0 for DPU BMC access"
+		mkdir -p /etc/systemd/network/25-oob-net0.network.d
+		cat > /etc/systemd/network/25-oob-net0.network.d/50-vlan4040.conf << EOF
+[Network]
+VLAN=vlan4040
+EOF
 	fi
 }
 
