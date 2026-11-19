@@ -1,0 +1,197 @@
+#!/bin/bash
+# Select the installed kernel required by the DOCA RPM profile for the next boot.
+# SPDX-License-Identifier: BSD-3-Clause
+
+set -o pipefail
+
+BF_BOOT=/boot
+BF_ETC=/etc
+BF_MODULES=/lib/modules
+BF_EFI=/sys/firmware/efi
+BF_OSTREE=/run/ostree-booted
+
+log()
+{
+    echo "bf-select-kernel: $*" >&2
+}
+
+kernel_requirement()
+{
+    local profile requirements installed
+    installed=$(rpm -qa --queryformat '%{NAME}\n') || return 1
+    for profile in doca-runtime-kernel doca-devel-kernel; do
+        grep -Fxq "$profile" <<< "$installed" || continue
+        requirements=$(rpm -q --requires "$profile") || return 1
+        awk '$1 == "kernel" && $2 == "=" {print $1, $2, $3}' <<< "$requirements"
+    done | sort -u
+}
+
+provider_images()
+{
+    local requirement=$1 providers provider files dependencies dependency children child file
+    providers=$(rpm -q --whatprovides "$requirement" \
+        --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n') || return 1
+    while IFS= read -r provider; do
+        files=$(rpm -ql "$provider") || return 1
+        # Some distros put the image in kernel itself, others in kernel-core.
+        while IFS= read -r file; do
+            case "$file" in "$BF_BOOT"/vmlinuz-*) echo "$file" ;; esac
+        done <<< "$files"
+        dependencies=$(rpm -q --requires "$provider") || return 1
+        dependencies=$(awk '$1 ~ /^kernel(-[[:alnum:]_-]+)?$/ && $2 == "=" {print $1, $2, $3}' <<< "$dependencies")
+        while IFS= read -r dependency; do
+            [ -n "$dependency" ] || continue
+            children=$(rpm -q --whatprovides "$dependency" \
+                --queryformat '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n') || return 1
+            while IFS= read -r child; do
+                files=$(rpm -ql "$child") || return 1
+                while IFS= read -r file; do
+                    case "$file" in "$BF_BOOT"/vmlinuz-*) echo "$file" ;; esac
+                done <<< "$files"
+            done <<< "$children"
+        done <<< "$dependencies"
+    done <<< "$providers"
+}
+
+resolve_grub_config()
+{
+    local config=$1
+    # Modern EFI grub.cfg can be a forwarding stub. Never overwrite it.
+    if grep -Eq '^[[:space:]]*configfile[[:space:]]' "$config" && \
+        ! grep -Eq '^[[:space:]]*(menuentry|submenu|blscfg)([[:space:]]|$)' "$config"; then
+        [ -s "$BF_BOOT/grub2/grub.cfg" ] || return 1
+        echo "$BF_BOOT/grub2/grub.cfg"
+    else
+        echo "$config"
+    fi
+}
+
+grub_config()
+{
+    local candidate config configs=""
+    # Prefer the distro's installed links over guessing from its name.
+    for candidate in "$BF_ETC/grub2-efi.cfg" "$BF_ETC/grub2.cfg"; do
+        [ -e "$candidate" ] || continue
+        config=$(readlink -f "$candidate") || return 1
+        resolve_grub_config "$config"
+        return
+    done
+    # Refuse an ambiguous layout rather than choosing a vendor directory.
+    for candidate in "$BF_BOOT/grub2/grub.cfg" "$BF_BOOT"/efi/EFI/*/grub.cfg; do
+        [ -s "$candidate" ] || continue
+        config=$(resolve_grub_config "$candidate") || return 1
+        configs+="$config"$'\n'
+    done
+    configs=$(printf '%s' "$configs" | sort -u)
+    [ -n "$configs" ] && [ "$(printf '%s\n' "$configs" | wc -l)" -eq 1 ] || return 1
+    echo "$configs"
+}
+
+main()
+(
+    local check=0 requirement images image version config envfile tool info selected
+    local ID="" VARIANT_ID="" work="" changed=0 env_existed=0
+    case "${1:-}" in
+        --check) check=1 ;;
+        -h|--help)
+            echo 'Usage: bf-select-kernel [--check]'
+            echo 'Select the installed DOCA profile kernel for the next boot.'
+            echo '--check validates the target and reports paths without changing boot files.'
+            return 0 ;;
+        '') ;;
+        *) log "Unknown option: $1"; return 1 ;;
+    esac
+    [ "$#" -le 1 ] || return 1
+
+    [ ! -f "$BF_ETC/os-release" ] || . "$BF_ETC/os-release"
+    # rpm-ostree owns boot selection on RHCOS. Image builds have no live EFI.
+    if [ "$VARIANT_ID" = coreos ] || [ "$ID" = rhcos ] || [ -e "$BF_OSTREE" ] || [ ! -d "$BF_EFI" ]; then
+        log 'Skipping boot selection outside a live, mutable EFI system'
+        return 0
+    fi
+
+    requirement=$(kernel_requirement) || { log 'Cannot query DOCA kernel requirements'; return 1; }
+    [ -n "$requirement" ] || { log 'No exact DOCA kernel requirement; keeping boot selection'; return 0; }
+    if [ "$(printf '%s\n' "$requirement" | wc -l)" -ne 1 ]; then
+        log 'DOCA profiles require different kernels; keeping boot selection'
+        return 1
+    fi
+    images=$(provider_images "$requirement" | sort -u) || { log "Cannot resolve $requirement"; return 1; }
+    if [ -z "$images" ] || [ "$(printf '%s\n' "$images" | wc -l)" -ne 1 ]; then
+        log 'Cannot identify exactly one packaged kernel image; keeping boot selection'
+        return 1
+    fi
+    image=$images
+    version=${image##*/vmlinuz-}
+    if [ ! -s "$image" ] || [ ! -s "$BF_BOOT/initramfs-$version.img" ] || [ ! -d "$BF_MODULES/$version" ]; then
+        log "Kernel image, initramfs or modules missing for $version; keeping boot selection"
+        return 1
+    fi
+    config=$(grub_config) || { log 'Cannot identify the active GRUB configuration'; return 1; }
+    [ -s "$BF_ETC/default/grub" ] || { log 'Missing /etc/default/grub'; return 1; }
+    for tool in grub2-mkconfig grub2-editenv grubby; do
+        command -v "$tool" >/dev/null || { log "Missing $tool"; return 1; }
+    done
+    # Writing an unmounted EFI directory would leave the actual ESP unchanged.
+    case "$config" in
+        "$BF_BOOT"/efi/*)
+            mountpoint -q "$BF_BOOT/efi" || { log 'EFI system partition is not mounted'; return 1; } ;;
+    esac
+    envfile="${config%/*}/grubenv"
+    if [ -L "$envfile" ]; then
+        envfile=$(readlink -f "$envfile") || return 1
+    fi
+    log "DOCA requires $requirement; selected $image (GRUB: $config)"
+    [ "$check" -eq 0 ] || return 0
+
+    work=$(mktemp -d) || return 1
+    cleanup()
+    {
+        local status=$?
+        if [ "$changed" -eq 1 ]; then
+            log 'Boot selection failed; restoring the previous boot configuration'
+            cat "$work/default-grub" > "$BF_ETC/default/grub" || status=1
+            cp -p "$work/grub.cfg" "$config" || status=1
+            if [ "$env_existed" -eq 1 ]; then
+                cat "$work/grubenv" > "$envfile" || status=1
+            else
+                rm -f "$envfile" || status=1
+            fi
+        fi
+        rm -rf "$work"
+        exit "$status"
+    }
+    trap cleanup EXIT
+    trap 'exit 1' HUP INT TERM
+    cp -p "$BF_ETC/default/grub" "$work/default-grub" || return 1
+    cp -p "$config" "$work/grub.cfg" || return 1
+    if [ -e "$envfile" ]; then
+        cp -p "$envfile" "$work/grubenv" || return 1
+        env_existed=1
+    fi
+    # Keep all other settings, including BlueField console and root arguments.
+    awk '!/^[[:space:]]*GRUB_DEFAULT[[:space:]]*=/ {print} END {print "GRUB_DEFAULT=saved"}' \
+        "$work/default-grub" > "$work/default-new" || return 1
+    changed=1
+    cat "$work/default-new" > "$BF_ETC/default/grub" || return 1
+    grub2-mkconfig -o "$config" || return 1
+    [ "$env_existed" -eq 1 ] || grub2-editenv "$envfile" create || return 1
+    local grub_args=(--grub2 --config-file "$config" --env "$envfile")
+    info=$(grubby "${grub_args[@]}" --info "$image") || return 1
+    if ! grep -Fq "vmlinuz-$version" <<< "$info"; then
+        log 'Generated GRUB configuration has no entry for the required kernel'
+        return 1
+    fi
+    grubby "${grub_args[@]}" --set-default "$image" || return 1
+    selected=$(grubby "${grub_args[@]}" --default-kernel) || return 1
+    if [ "$selected" != "$image" ]; then
+        log "GRUB selected $selected instead of $image"
+        return 1
+    fi
+    changed=0
+    log "Next boot kernel: $version. Reboot during the maintenance window to apply it."
+)
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi
