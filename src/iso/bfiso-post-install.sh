@@ -166,6 +166,21 @@ cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum
 pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
 dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
 PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
+if [ -z "${PSID}" ]; then
+	# Direct PCI access may be blocked (e.g. SecureBoot without MST).
+	# Retry on the MST device.
+	mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+	if [ -z "${mst_dev}" ]; then
+		mst start > /dev/null 2>&1
+		mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
+	fi
+	if [ -n "${mst_dev}" ]; then
+		flint_dev=${mst_dev}
+		FLINT=flint
+		dpu_part_number=${dpu_part_number:-$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')}
+		PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
+	fi
+fi
 
 UPDATE_ATF_UEFI=${UPDATE_ATF_UEFI:-"yes"}
 UPDATE_DPU_OS=${UPDATE_DPU_OS:-"yes"}
@@ -922,13 +937,27 @@ provided_nic_fw()
 
 is_nic_fw_update_required()
 {
+	local running
+	local provided
+
 	if [ "${FORCE_NIC_FW_UPDATE}" == "yes" ]; then
 		log "INFO: FORCE_NIC_FW_UPDATE is set."
 		return 0
 	fi
 
-	if [ "$(running_nic_fw)" == "$(provided_nic_fw)" ]; then
-		log "INFO: Installed NIC Firmware is the same as provided. Skipping NIC Firmware update."
+	running=$(running_nic_fw)
+	provided=$(provided_nic_fw)
+
+	# Skip only when both versions are known and equal. An empty version
+	# means the query failed (e.g. empty PSID or inaccessible device), so
+	# the update is attempted rather than silently skipped.
+	if [[ -z "$running" || -z "$provided" ]]; then
+		log "WARNING: Cannot compare NIC Firmware versions (running: ${running:-unknown}, provided: ${provided:-unknown}, PSID: ${PSID:-unknown}, device: ${flint_dev:-unknown}). Attempting NIC Firmware update."
+		return 0
+	fi
+
+	if [ "$running" == "$provided" ]; then
+		log "INFO: Installed NIC Firmware is the same as provided (${running}). Skipping NIC Firmware update."
 		return 1
 	fi
 	return 0

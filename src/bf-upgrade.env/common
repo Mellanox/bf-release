@@ -16,17 +16,26 @@ FLINT=${FLINT:-mstflint}
 cx_pcidev=${cx_pcidev:-$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}' | head -1)}
 cx_dev_id=$(lspci -nD -s ${cx_pcidev} 2> /dev/null | awk -F ':' '{print strtonum("0x" $NF)}')
 pciids=$(lspci -nD 2> /dev/null | grep 15b3:a2d[26cf] | awk '{print $1}')
-flint_dev=$cx_pcidev
-dpu_part_number=${dpu_part_number:-$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')}
-PSID=$($FLINT -d $flint_dev q | grep PSID | awk '{print $NF}')
+# Keep the device selected by the caller (dpu-bmc-upgrade exports the MST
+# device on SecureBoot, where direct PCI access is blocked).
+flint_dev=${flint_dev:-$cx_pcidev}
+dpu_part_number=${dpu_part_number:-$($FLINT -d $flint_dev q full 2> /dev/null | grep "Part Number:" | awk '{print $NF}')}
+PSID=$($FLINT -d $flint_dev q 2> /dev/null | grep PSID | awk '{print $NF}')
 
-if [ -z "${dpu_part_number}" ]; then
+# Fall back to the MST device if the part number or PSID could not be read
+# (e.g. SecureBoot). Keep the current device if MST is not available.
+if [[ -z "${dpu_part_number}" || -z "${PSID}" ]]; then
 	mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
 	if [ ! -n "${mst_dev}" ]; then
 		mst start > /dev/null 2>&1
+		mst_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
 	fi
-	flint_dev=$(/bin/ls -1 /dev/mst/mt*_pciconf0 2> /dev/null)
-	dpu_part_number=$($FLINT -d $flint_dev q full | grep "Part Number:" | awk '{print $NF}')
+	if [ -n "${mst_dev}" ]; then
+		flint_dev=${mst_dev}
+		FLINT=flint
+		dpu_part_number=${dpu_part_number:-$($FLINT -d $flint_dev q full 2> /dev/null | grep "Part Number:" | awk '{print $NF}')}
+		PSID=${PSID:-$($FLINT -d $flint_dev q 2> /dev/null | grep PSID | awk '{print $NF}')}
+	fi
 fi
 
 total_weight=0
