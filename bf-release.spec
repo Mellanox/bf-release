@@ -216,7 +216,8 @@ if [ ! -f /lib/udev/rules.d/91-tmfifo_net.rules ]; then
     install -m 0644 /usr/share/%{name}/91-tmfifo_net.rules /lib/udev/rules.d/
 fi
 
-%if 0%{?alinux}
+# EL10 NetworkManager has no ifcfg-rh plugin; it reads keyfiles only.
+%if 0%{?alinux} || 0%{?rhel} >= 10
 NM_CONN_DIR=/etc/NetworkManager/system-connections
 
 # BlueField-1/2/3: tmfifo_net0
@@ -299,6 +300,8 @@ type=ethernet
 interface-name=oob_net0
 
 [ipv4]
+# NetworkManager sends this itself: EL10 has no dhclient for dhclient.conf
+dhcp-vendor-class-identifier=NVIDIA/BF/OOB
 method=auto
 route-metric=50
 
@@ -595,7 +598,7 @@ fi
 # but were shipped in %%files by older bf-release versions. Marking them
 # %%ghost prevents RPM from deleting them during upgrade cleanup.
 %ghost /lib/udev/rules.d/91-tmfifo_net.rules
-%if 0%{?alinux}
+%if 0%{?alinux} || 0%{?rhel} >= 10
 %ghost /etc/NetworkManager/system-connections/tmfifo_net0-static.nmconnection
 %ghost /etc/NetworkManager/system-connections/oob_net0-dhcp.nmconnection
 %ghost /etc/NetworkManager/system-connections/nodnic0-static.nmconnection
