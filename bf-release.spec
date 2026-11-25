@@ -32,6 +32,11 @@ BlueField release files and post-installation configuration
 
 %define __python %{__python3}
 
+# The build container's /etc/mlnx-release carries the BFB OS label, e.g.
+# "..._ubuntu-24.04_64k-cmx" or "..._debian-13_cmx" for CMX images.
+# Can be overridden with: --define "bf_platform CMX"
+%{!?bf_platform: %global bf_platform %(grep -qiE '[_-]cmx([^[:alnum:]]|$)' /etc/mlnx-release 2> /dev/null && echo CMX)}
+
 %prep
 %setup -q
 
@@ -51,6 +56,10 @@ fi
 
 install -d %{buildroot}/etc
 echo ${BF_VERSION} > %{buildroot}/etc/mlnx-release
+%if "%{bf_platform}" != ""
+install -d %{buildroot}/etc/nvidia
+echo "PLATFORM=%{bf_platform}" > %{buildroot}/etc/nvidia/platform.conf
+%endif
 
 # Tools
 install -d %{buildroot}/opt/mellanox/hlk
@@ -554,6 +563,10 @@ fi
 
 %files
 /etc/mlnx-release
+%if "%{bf_platform}" != ""
+%dir /etc/nvidia
+/etc/nvidia/platform.conf
+%endif
 
 %dir /etc/acpi/events/
 /etc/acpi/events/mlnx-powerconf
