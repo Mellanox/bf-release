@@ -13,6 +13,9 @@ OFED_VERSION := $(shell ofed_info -n 2> /dev/null || echo inbox)
 BF_VERSION := $(shell dpkg-query --showformat='${Version}' --show mlxbf-bootimages 2> /dev/null | sed -e 's/-/./g')
 
 BFB_VERSION := $(shell cat /etc/mlnx-release 2> /dev/null)
+# The build container's /etc/mlnx-release carries the BFB OS label, e.g.
+# "..._ubuntu-24.04_64k-cmx" or "..._debian-13_cmx" for CMX images.
+PLATFORM := $(shell grep -qiE '[_-]cmx([^[:alnum:]]|$$)' /etc/mlnx-release 2> /dev/null && echo CMX)
 DOCA_REPO_ARCH := arm64-dpu
 DOCA_REPO_DIST := $(DIST_NAME_L)$(DIST_VERSION)
 ifeq ($(DIST_NAME_L),debian)
@@ -33,6 +36,10 @@ override_dh_auto_install:
 
 	dh_installdirs -p$(pname)  etc
 	echo $(BFB_VERSION) > debian/$(pname)/etc/mlnx-release
+ifneq ($(PLATFORM),)
+	dh_installdirs -p$(pname)  etc/nvidia
+	echo "PLATFORM=$(PLATFORM)" > debian/$(pname)/etc/nvidia/platform.conf
+endif
 
 	# Tools
 	dh_installdirs -p$(pname)  opt/mellanox/hlk
